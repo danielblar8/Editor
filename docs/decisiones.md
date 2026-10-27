@@ -176,3 +176,116 @@ qué límites tiene.
   funcional se hizo con un script temporal fuera del proyecto. La Fase 7
   cubrirá las pruebas y el pulido.
 - Sin commit de cierre de fase: queda pendiente de revisión manual.
+
+## Fase 2 — Layout con chat y tipo de documento (2026-10-27)
+
+### Formato v2 y migración
+
+- El documento guardado pasa a
+  `{ id, version: 2, tipoDocumento, contenido, actualizadoEn }`. Las claves de
+  localStorage no cambian, así que los documentos de la Fase 1 se leen sin
+  pasos manuales.
+- La migración es de lectura: un registro `version: 1` se acepta, recibe
+  `tipoDocumento: 'texto-abierto'` y se reescribe como v2 conservando el mismo
+  ID y `actualizadoEn`. Un v2 con un tipo desconocido cae al valor por defecto.
+  Las versiones no reconocidas siguen descartándose.
+- `cargarDocumento` devuelve ahora `{ documento, esNuevo }`. `esNuevo` solo es
+  `true` cuando no había ningún documento y se acaba de crear; un documento
+  migrado no dispara la elección inicial.
+- La promesa de carga se memoiza durante la sesión. React StrictMode ejecuta
+  los efectos dos veces en desarrollo: sin la caché, la segunda llamada
+  encontraría el documento creado por la primera y respondería
+  `esNuevo: false`, ocultando el diálogo inicial. Si la carga falla, la promesa
+  se descarta para permitir reintentar.
+- El tipo de documento se persiste desde `EditorTexto`, que es quien tiene el
+  JSON actual de TipTap. Al cambiarlo, se actualiza la referencia interna y se
+  fuerza un guardado inmediato, sin esperar al debounce del contenido. `App`
+  mantiene el tipo como estado de interfaz para el selector y el chat, pero no
+  duplica el contenido: así ningún guardado puede escribir un JSON atrasado.
+
+### Catálogo de tipos
+
+- `src/lib/tiposDocumento.ts` es la única fuente de identificadores, nombres
+  visibles y descripciones. De ahí salen el selector, el diálogo inicial, el
+  chat y la validación del almacenamiento. En la Fase 3 se reutilizará para
+  elegir el prompt base.
+- IDs: `ensayo-argumentativo`, `reporte-investigacion` y `texto-abierto`. El
+  valor por defecto es `texto-abierto`.
+- El selector es un `<select>` nativo: mantiene el comportamiento del sistema,
+  es accesible con teclado y ocupa poco en la cabecera. La etiqueta visible se
+  oculta en pantallas estrechas, pero el control conserva `aria-label`.
+
+### Elección inicial
+
+- El diálogo se muestra solo cuando `esNuevo` es `true`. Usa el elemento nativo
+  `<dialog>` con `showModal()`, lo que aporta foco atrapado, cierre con Escape y
+  restauración del foco sin librerías.
+- Las tres tarjetas eligen directamente; «Omitir: seguir con Texto Abierto» y
+  Escape dejan el tipo por defecto.
+- El documento nuevo ya se guarda al crearse con Texto Abierto. Si el usuario
+  recarga mientras el diálogo sigue abierto, ya existe un documento y el
+  diálogo no vuelve a aparecer; el selector superior sigue disponible. Se
+  acepta como límite de esta fase.
+
+### Chat sin IA
+
+- `src/lib/chat.ts` contiene el modelo de mensaje, las fábricas de bienvenida y
+  aviso, y `responderTutorSimulado()`. Esta última es una promesa sin red ni
+  IA: en la Fase 3 se sustituirá por la llamada al backend sin tocar la
+  interfaz.
+- `src/hooks/useChatTutor.ts` mantiene los mensajes, el estado `enviando` y el
+  cambio de tipo. El historial vive solo en memoria y se pierde al recargar.
+- `src/components/ChatLateral.tsx` es presentacional: no conoce Gemini, el
+  backend ni localStorage.
+- Si el usuario cambia el tipo antes de conversar (por ejemplo, al elegir en el
+  diálogo inicial), se reemplaza el mensaje de bienvenida; si ya hay
+  conversación, se añade un aviso con el nuevo tipo. Así no queda una
+  bienvenida que mencione un tipo distinto al seleccionado.
+- La respuesta simulada menciona siempre el tipo actual: «Todavía no estoy
+  conectado a la IA. Revisaré tu documento («…») en la Fase 3.»
+- Las sugerencias «Revisa mi introducción» y «¿Hay huecos en mi argumento?» se
+  envían como mensajes del usuario y conservan el foco en el campo.
+- `Enter` envía y `Mayús+Enter` inserta un salto de línea. Se respeta
+  `isComposing` para no interferir con teclados IME. El auto-scroll respeta
+  `prefers-reduced-motion`.
+- Un guard `enviandoRef` evita dobles envíos. Si la respuesta fallara, se
+  muestra un mensaje neutro en el chat; no hay estados de carga ni de error de
+  red porque todavía no hay red.
+
+### Layout y accesibilidad
+
+- Cabecera superior sticky con título, selector y botón de chat
+  (`aria-expanded` + `aria-controls`). La barra de formato queda sticky justo
+  debajo, a `3.5rem`.
+- En escritorio el chat es una columna lateral de 22–24 rem, con altura de
+  viewport y scroll interno propio.
+- En pantallas menores de 1024 px el chat es un panel deslizable desde la
+  derecha, con fondo oscurecido, `role="dialog"`, `aria-modal`, bloqueo del
+  scroll de la página, foco atrapado dentro del panel y cierre con Escape,
+  botón o fondo.
+- Por defecto el chat está abierto en escritorio y cerrado en móvil, para no
+  cubrir el editor al entrar.
+- Al abrir o reabrir el chat el foco va al campo de texto; al cerrarlo vuelve
+  al botón de la cabecera que lo abrió.
+- La lista de mensajes usa `role="log"`, `aria-live="polite"` y una etiqueta
+  por autor. Los botones y el campo tienen etiquetas en español.
+
+### Alcance, dependencias y verificación
+
+- No se añadieron dependencias, variables de entorno ni backend. El frontend
+  sigue sin llamar a Gemini.
+- `npm run typecheck`, `npm run lint` y `npm run build` pasan sin errores.
+- Se verificaron en Edge headless 43 comprobaciones: diálogo inicial, elección
+  y omisión, persistencia del tipo, migración v1→v2, bienvenida, envío con
+  Enter, Mayús+Enter, sugerencias, aviso de cambio de tipo, colapso y reapertura,
+  historial en memoria, autoguardado existente, panel móvil, foco, Escape,
+  fondo y restauración del foco.
+
+### Límites conocidos de la Fase 2
+
+- El tutor responde con un texto fijo; no hay IA ni backend (Fase 3).
+- El historial del chat no se guarda y desaparece al recargar.
+- Solo existe un documento.
+- El diálogo inicial no se repite tras una recarga, aunque se haya omitido.
+- La migración cubre únicamente v1→v2.
+- Sin commit de cierre de fase: queda pendiente de revisión manual.

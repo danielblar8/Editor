@@ -5,10 +5,12 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { DocumentoGuardado } from '../lib/storage'
 import { guardarDocumento } from '../lib/storage'
 import { contarPalabras, formatearPalabras } from '../lib/texto'
+import type { TipoDocumentoId } from '../lib/tiposDocumento'
 import { BarraHerramientas } from './BarraHerramientas'
 
 type EditorTextoProps = {
   documentoInicial: DocumentoGuardado
+  tipoDocumento: TipoDocumentoId
 }
 
 type EstadoGuardado = 'guardado' | 'pendiente' | 'error'
@@ -21,7 +23,10 @@ const TEXTO_ESTADO: Record<EstadoGuardado, string> = {
   error: 'No se pudo guardar',
 }
 
-export function EditorTexto({ documentoInicial }: EditorTextoProps) {
+export function EditorTexto({
+  documentoInicial,
+  tipoDocumento,
+}: EditorTextoProps) {
   const [estadoGuardado, setEstadoGuardado] =
     useState<EstadoGuardado>('guardado')
   const documentoRef = useRef(documentoInicial)
@@ -29,33 +34,38 @@ export function EditorTexto({ documentoInicial }: EditorTextoProps) {
   const temporizadorRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const guardadoPendienteRef = useRef(false)
   const versionRef = useRef(0)
+  const tipoPersistidoRef = useRef(documentoInicial.tipoDocumento)
 
-  const persistir = useCallback(async (editorActual: Editor) => {
-    if (!guardadoPendienteRef.current) return
+  const persistir = useCallback(
+    async (editorActual: Editor, forzar = false) => {
+      if (!forzar && !guardadoPendienteRef.current) return
 
-    if (temporizadorRef.current !== null) {
-      clearTimeout(temporizadorRef.current)
-      temporizadorRef.current = null
-    }
-
-    const versionAlGuardar = versionRef.current
-
-    try {
-      await guardarDocumento({
-        ...documentoRef.current,
-        contenido: editorActual.getJSON(),
-        actualizadoEn: new Date().toISOString(),
-      })
-
-      if (versionRef.current === versionAlGuardar) {
-        guardadoPendienteRef.current = false
-        setEstadoGuardado('guardado')
+      if (temporizadorRef.current !== null) {
+        clearTimeout(temporizadorRef.current)
+        temporizadorRef.current = null
       }
-    } catch {
-      guardadoPendienteRef.current = true
-      setEstadoGuardado('error')
-    }
-  }, [])
+
+      setEstadoGuardado('pendiente')
+      const versionAlGuardar = versionRef.current
+
+      try {
+        await guardarDocumento({
+          ...documentoRef.current,
+          contenido: editorActual.getJSON(),
+          actualizadoEn: new Date().toISOString(),
+        })
+
+        if (versionRef.current === versionAlGuardar) {
+          guardadoPendienteRef.current = false
+          setEstadoGuardado('guardado')
+        }
+      } catch {
+        guardadoPendienteRef.current = true
+        setEstadoGuardado('error')
+      }
+    },
+    [],
+  )
 
   const editor = useEditor({
     extensions: [
@@ -98,6 +108,24 @@ export function EditorTexto({ documentoInicial }: EditorTextoProps) {
     editorRef.current = editor
   }, [editor])
 
+  // El tipo de documento es una acción discreta del usuario: se guarda de
+  // inmediato, sin esperar al debounce del contenido, para que sobreviva a una
+  // recarga aunque no se vuelva a escribir.
+  useEffect(() => {
+    if (tipoPersistidoRef.current === tipoDocumento) return
+
+    documentoRef.current = { ...documentoRef.current, tipoDocumento }
+    guardadoPendienteRef.current = true
+
+    if (!editor) return
+
+    tipoPersistidoRef.current = tipoDocumento
+    // Persistir aquí sincroniza el documento con localStorage; el cambio de
+    // tipo es una acción externa al ciclo de render.
+    // oxlint-disable-next-line react/set-state-in-effect
+    void persistir(editor, true)
+  }, [editor, persistir, tipoDocumento])
+
   useEffect(() => {
     const vaciarPendiente = () => {
       const editorActual = editorRef.current
@@ -117,13 +145,13 @@ export function EditorTexto({ documentoInicial }: EditorTextoProps) {
   }, [persistir])
 
   return (
-    <div className="min-h-screen bg-slate-200/80">
-      <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
+    <>
+      <header className="sticky top-14 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
         <BarraHerramientas editor={editor} />
       </header>
 
       <div className="px-3 py-6 sm:px-6 sm:py-10">
-        <article className="mx-auto flex min-h-[calc(100vh-8.5rem)] w-full max-w-[816px] flex-col rounded-sm bg-white px-5 py-10 shadow-xl shadow-slate-900/10 ring-1 ring-slate-900/5 sm:px-14 sm:py-14 lg:px-20">
+        <article className="mx-auto flex min-h-[calc(100dvh-10rem)] w-full max-w-[816px] flex-col rounded-sm bg-white px-5 py-10 shadow-xl shadow-slate-900/10 ring-1 ring-slate-900/5 sm:px-14 sm:py-14 lg:px-20">
           <EditorContent editor={editor} className="flex-1" />
 
           <footer className="mt-10 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4 text-xs">
@@ -143,6 +171,6 @@ export function EditorTexto({ documentoInicial }: EditorTextoProps) {
           </footer>
         </article>
       </div>
-    </div>
+    </>
   )
 }

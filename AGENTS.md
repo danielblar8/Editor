@@ -65,4 +65,11 @@ ideas nuevas en la conclusión, desequilibrio entre secciones.
 - Fase 7: Pruebas y pulido (manejo de errores, estados de carga)
 - Fase 8: Despliegue en Vercel y documentación
 
-## Fase actual: 1
+## Eficiencia
+- Respuestas breves; no repitas lo que ya dije.
+- No releas archivos ya leídos en esta sesión.
+- Lee solo lo necesario; no explores todo el repo.
+- No pegues archivos completos: indica ruta y qué cambió.
+- Ignora package-lock.json, dist/ y node_modules/.
+
+## Fase actual: 2

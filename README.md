@@ -4,10 +4,11 @@ Editor de texto tipo Word con un tutor de IA en un chat lateral. El tutor
 evalúa estructura y coherencia a demanda y **nunca** reescribe el texto del
 usuario.
 
-Estado actual: **Fase 1 (editor base)**. Ya existe la hoja de escritura con
-TipTap, la barra de formato, el corrector ortográfico nativo, el contador de
-palabras y el autoguardado. El chat y el tutor de IA llegan en fases
-posteriores.
+Estado actual: **Fase 2 (layout, chat y tipo de documento)**. Ya existe la hoja
+de escritura con TipTap, la barra de formato, el corrector ortográfico nativo,
+el contador de palabras, el autoguardado, el selector de tipo de documento y un
+chat lateral con respuestas simuladas. Todavía no hay IA real ni backend: eso
+llega en la Fase 3.
 
 ## Requisitos
 
@@ -65,6 +66,26 @@ Códigos de salida: `0` éxito, `1` error de validación, `2` error de API,
 - Se guarda el JSON de TipTap, no HTML ni texto plano. El único módulo que
   toca localStorage es `src/lib/storage.ts`.
 
+## Chat y tipo de documento (Fase 2)
+
+- **Selector de tipo de documento** en la cabecera superior: Ensayo
+  Argumentativo, Reporte de Investigación o Texto Abierto / Sin Definir. Se
+  puede cambiar en cualquier momento.
+- **Elección inicial**: con un documento nuevo aparece un diálogo para elegir
+  el tipo. Se puede omitir y seguir con Texto Abierto. La elección se guarda
+  junto con el documento y se recupera al recargar.
+- **Migración**: los documentos guardados en la Fase 1 se cargan sin perder
+  contenido; reciben el tipo Texto Abierto y se reescriben en el formato v2.
+- **Chat lateral** en la derecha, plegable con el botón de la cabecera. En
+  pantallas menores de 1024 px aparece como panel deslizable.
+- El tutor simulado da la bienvenida, avisa cuando cambia el tipo de documento
+  y responde con un mensaje fijo en español que menciona el tipo actual
+  («Todavía no estoy conectado a la IA… Fase 3»). No hay ninguna llamada a
+  Gemini ni al backend.
+- `Enter` envía, `Mayús+Enter` salta de línea. Hay dos botones de sugerencia y
+  el desplazamiento es automático al último mensaje.
+- El historial del chat vive **solo en memoria**: al recargar se pierde.
+
 ## Estructura
 
 ```
@@ -75,10 +96,18 @@ src/
   components/
     EditorTexto.tsx            Editor, hoja y autoguardado
     BarraHerramientas.tsx      Botones de formato
+    EncabezadoApp.tsx          Cabecera, selector y botón del chat
+    SelectorTipoDocumento.tsx  Selector de tipo de documento
+    DialogoTipoDocumento.tsx   Elección inicial del tipo
+    ChatLateral.tsx            Panel visual del chat
+  hooks/
+    useChatTutor.ts            Estado del chat y respuesta simulada
   lib/
-    storage.ts                 Persistencia (localStorage)
+    storage.ts                 Persistencia (localStorage, formato v2)
+    tiposDocumento.ts          Catálogo único de tipos de documento
+    chat.ts                    Mensajes y tutor simulado
     texto.ts                   Conteo de palabras
-  App.tsx                      Carga inicial del documento
+  App.tsx                      Carga, layout y estado de la fase
 docs/decisiones.md             Registro de decisiones técnicas
 ```
 
