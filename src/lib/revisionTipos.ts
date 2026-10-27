@@ -51,3 +51,26 @@ export type Observacion = {
   observacion: string
   pregunta_guia: string
 }
+
+function normalizarMensaje(mensaje: string): string {
+  return mensaje
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+}
+
+/**
+ * Interpretación simple de comandos de la Fase 3.
+ *
+ * Si el mensaje menciona la introducción o la conclusión, se revisa esa
+ * sección. Cualquier otro mensaje (incluidos «huecos» y «argumento») revisa el
+ * documento completo. La detección fina de secciones llega en fases posteriores.
+ */
+export function detectarSeccion(mensaje: string): SeccionRevision {
+  const normalizado = normalizarMensaje(mensaje)
+
+  if (normalizado.includes('introduccion')) return 'introduccion'
+  if (normalizado.includes('conclusion')) return 'conclusion'
+
+  return 'documento'
+}

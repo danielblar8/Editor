@@ -1,9 +1,11 @@
+import type { Editor } from '@tiptap/core'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChatLateral } from './components/ChatLateral'
 import { DialogoTipoDocumento } from './components/DialogoTipoDocumento'
 import { EditorTexto } from './components/EditorTexto'
 import { EncabezadoApp } from './components/EncabezadoApp'
 import { useChatTutor } from './hooks/useChatTutor'
+import { extraerParrafos, unirParrafos } from './lib/parrafos'
 import type { DocumentoGuardado } from './lib/storage'
 import { cargarDocumento } from './lib/storage'
 import type { TipoDocumentoId } from './lib/tiposDocumento'
@@ -21,7 +23,20 @@ function App() {
   )
   const [enfocarChatAlAbrir, setEnfocarChatAlAbrir] = useState(false)
   const botonChatRef = useRef<HTMLButtonElement>(null)
-  const chat = useChatTutor(tipoDocumento)
+  const editorRef = useRef<Editor | null>(null)
+
+  const obtenerTexto = useCallback(() => {
+    const editor = editorRef.current
+    if (!editor) return ''
+
+    return unirParrafos(extraerParrafos(editor))
+  }, [])
+
+  const registrarEditor = useCallback((editor: Editor | null) => {
+    editorRef.current = editor
+  }, [])
+
+  const chat = useChatTutor(tipoDocumento, obtenerTexto)
 
   useEffect(() => {
     let activo = true
@@ -104,6 +119,7 @@ function App() {
           <EditorTexto
             documentoInicial={documento}
             tipoDocumento={tipoDocumento}
+            onEditorListo={registrarEditor}
           />
         </main>
 

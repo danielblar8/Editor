@@ -4,11 +4,11 @@ Editor de texto tipo Word con un tutor de IA en un chat lateral. El tutor
 evalúa estructura y coherencia a demanda y **nunca** reescribe el texto del
 usuario.
 
-Estado actual: **Fase 2 (layout, chat y tipo de documento)**. Ya existe la hoja
+Estado actual: **Fase 3 (agente tutor conectado a Gemini)**. Ya existe la hoja
 de escritura con TipTap, la barra de formato, el corrector ortográfico nativo,
 el contador de palabras, el autoguardado, el selector de tipo de documento y un
-chat lateral con respuestas simuladas. Todavía no hay IA real ni backend: eso
-llega en la Fase 3.
+chat lateral que revisa estructura y coherencia con IA real a demanda. El tutor
+no modifica el texto: solo devuelve observaciones y preguntas guía.
 
 ## Requisitos
 
@@ -16,7 +16,7 @@ llega en la Fase 3.
   `--env-file-if-exists`).
 - npm.
 - Una clave de Gemini de [Google AI Studio](https://aistudio.google.com/apikey)
-  solo si vas a ejecutar la prueba de humo.
+  para el chat con IA y para la prueba de humo.
 
 ## Puesta en marcha
 
@@ -32,17 +32,28 @@ GEMINI_API_KEY=tu_clave_aqui
 GEMINI_MODEL=gemini-2.5-flash
 ```
 
-Nunca subas `.env` al repositorio.
+`GEMINI_MODEL` debe ser un modelo disponible en tu cuenta. El backend no fija
+un modelo por defecto: si la variable falta o el modelo no existe, el chat
+mostrará un error de configuración. Durante el desarrollo, `gemini-3.8-flash`
+dio errores de alta demanda y se cambió solo el valor de `.env`; el código no
+se modificó.
+
+Nunca subas `.env` al repositorio. La clave vive únicamente en el servidor: el
+frontend llama a `/api`, nunca a Gemini.
 
 ## Comandos
 
-| Comando             | Qué hace                                              |
-| ------------------- | ----------------------------------------------------- |
-| `npm run dev`       | Servidor de desarrollo (http://localhost:5173).       |
-| `npm run build`     | Comprueba tipos y genera la build de producción.      |
-| `npm run typecheck` | Solo comprobación de tipos.                           |
-| `npm run lint`      | Oxlint.                                               |
-| `npm run smoke`     | Prueba de humo: envía el ensayo de prueba a Gemini.   |
+| Comando             | Qué hace                                                   |
+| ------------------- | ---------------------------------------------------------- |
+| `npm run dev`       | Vite en http://localhost:5173 y API en http://localhost:3001. |
+| `npm run build`     | Comprueba tipos y genera la build de producción.           |
+| `npm run typecheck` | Solo comprobación de tipos.                                |
+| `npm run lint`      | Oxlint.                                                    |
+| `npm run smoke`     | Prueba de humo: envía el ensayo de prueba a Gemini.        |
+
+`npm run dev` usa `concurrently` para levantar el frontend y el backend. Vite
+proxya `/api` al puerto 3001, así que basta con abrir
+http://localhost:5173.
 
 La prueba de humo acepta otra ruta:
 
@@ -78,17 +89,55 @@ Códigos de salida: `0` éxito, `1` error de validación, `2` error de API,
   contenido; reciben el tipo Texto Abierto y se reescriben en el formato v2.
 - **Chat lateral** en la derecha, plegable con el botón de la cabecera. En
   pantallas menores de 1024 px aparece como panel deslizable.
-- El tutor simulado da la bienvenida, avisa cuando cambia el tipo de documento
-  y responde con un mensaje fijo en español que menciona el tipo actual
-  («Todavía no estoy conectado a la IA… Fase 3»). No hay ninguna llamada a
-  Gemini ni al backend.
+- El tutor da la bienvenida, avisa cuando cambia el tipo de documento y envía
+  las revisiones al backend. Responde en español.
 - `Enter` envía, `Mayús+Enter` salta de línea. Hay dos botones de sugerencia y
   el desplazamiento es automático al último mensaje.
 - El historial del chat vive **solo en memoria**: al recargar se pierde.
 
+## Chat con IA (Fase 3)
+
+- **Tutor a demanda**: escribe «Revisa mi introducción», «Revisa la conclusión»
+  o pide una revisión general. La detección es simple: «introducción» revisa la
+  introducción, «conclusión» revisa la conclusión y cualquier otro mensaje
+  revisa el documento completo.
+- **Solo diagnóstico**: cada observación indica el número de párrafo, el tipo de
+  problema, una observación concreta y una pregunta guía. El tutor nunca
+  reescribe, no propone frases nuevas y no corrige ortografía.
+- **Prompts por tipo de documento**: los criterios cambian entre ensayo
+  argumentativo, reporte de investigación y texto abierto. El prompt se
+  construye en el servidor y no se envía desde el cliente.
+- **Sin problemas**: si el modelo no encuentra problemas reales, el chat lo dice
+  con un mensaje normal y no inventa observaciones.
+- **Estados**: mientras espera se muestra «El tutor está revisando…». Los errores
+  de conexión, cuota agotada, texto vacío, texto demasiado largo y respuesta
+  inválida se muestran en español.
+- **Límite**: 12.000 caracteres por revisión. Si el documento es más largo, se
+  pide dividirlo o revisar una sección más corta.
+- **Privacidad**: la API key vive en el servidor. El frontend solo llama a
+  `/api/revisar`; nunca a Gemini directamente.
+
+### Endpoints
+
+| Método | Ruta           | Descripción                                            |
+| ------ | -------------- | ------------------------------------------------------ |
+| `GET`  | `/api/salud`   | Comprueba que el backend está en marcha.               |
+| `POST` | `/api/revisar` | Recibe `{ texto, tipoDocumento, seccion }` y devuelve observaciones validadas con Zod. |
+
+Códigos de error del backend: `peticion_invalida`, `texto_vacio`,
+`texto_demasiado_largo`, `cuota_agotada`, `configuracion`,
+`respuesta_invalida`, `servicio_no_disponible`, `api_gemini`,
+`tiempo_agotado`, `sin_conexion` y `error_interno`.
+
 ## Estructura
 
 ```
+server/
+  index.ts                     Arranque de la API (Hono + Node)
+  app.ts                       Rutas /api/salud y /api/revisar
+  esquema.ts                   Esquemas Zod de petición y observaciones
+  gemini.ts                    Llamada a Gemini, timeout y errores
+  prompts.ts                   Prompts por tipo y sección
 scripts/
   fixtures/ensayo-prueba.txt   Ensayo con defectos deliberados
   smoke-gemini.ts              Verificación aislada contra Gemini
@@ -101,13 +150,15 @@ src/
     DialogoTipoDocumento.tsx   Elección inicial del tipo
     ChatLateral.tsx            Panel visual del chat
   hooks/
-    useChatTutor.ts            Estado del chat y respuesta simulada
+    useChatTutor.ts            Estado del chat y envío al backend
   lib/
     storage.ts                 Persistencia (localStorage, formato v2)
     tiposDocumento.ts          Catálogo único de tipos de documento
-    chat.ts                    Mensajes y tutor simulado
+    revisionTipos.ts           Contrato compartido y detección de sección
+    parrafos.ts                Extracción de párrafos en solo lectura
+    chat.ts                    Mensajes y llamada a /api/revisar
     texto.ts                   Conteo de palabras
-  App.tsx                      Carga, layout y estado de la fase
+  App.tsx                      Carga, layout y referencia del editor
 docs/decisiones.md             Registro de decisiones técnicas
 ```
 

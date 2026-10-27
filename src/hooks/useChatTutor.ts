@@ -3,20 +3,28 @@ import type { MensajeChat } from '../lib/chat'
 import {
   crearAvisoCambioTipo,
   crearMensajeBienvenida,
+  crearMensajeDocumentoVacio,
   crearMensajeTutor,
+  crearMensajeTextoLargo,
   crearMensajeUsuario,
-  responderTutorSimulado,
+  crearMensajesRevision,
+  ErrorTutor,
+  responderTutor,
 } from '../lib/chat'
+import { LIMITE_CARACTERES_TEXTO } from '../lib/revisionTipos'
 import type { TipoDocumentoId } from '../lib/tiposDocumento'
 
 /**
  * Estado del chat del tutor.
  *
- * El historial vive solo en memoria: no se guarda en localStorage. Cuando la
- * Fase 3 añada el backend, solo hay que cambiar la llamada a
- * `responderTutorSimulado`; la interfaz seguirá usando este mismo hook.
+ * El historial vive solo en memoria: no se guarda en localStorage. El texto
+ * del documento se obtiene en el momento de enviar con `obtenerTexto`, de modo
+ * que el hook nunca escribe en el editor.
  */
-export function useChatTutor(tipoDocumento: TipoDocumentoId) {
+export function useChatTutor(
+  tipoDocumento: TipoDocumentoId,
+  obtenerTexto: () => string,
+) {
   const [mensajes, setMensajes] = useState<MensajeChat[]>(() => [
     crearMensajeBienvenida(tipoDocumento),
   ])
@@ -55,28 +63,53 @@ export function useChatTutor(tipoDocumento: TipoDocumentoId) {
       ])
 
       try {
-        const respuesta = await responderTutorSimulado({
+        const documento = obtenerTexto().trim()
+
+        if (!documento) {
+          setMensajes((anteriores) => [
+            ...anteriores,
+            crearMensajeDocumentoVacio(),
+          ])
+          return
+        }
+
+        if (documento.length > LIMITE_CARACTERES_TEXTO) {
+          setMensajes((anteriores) => [
+            ...anteriores,
+            crearMensajeTextoLargo(),
+          ])
+          return
+        }
+
+        const respuesta = await responderTutor({
           mensaje: limpio,
           tipoDocumento,
+          texto: documento,
         })
 
         setMensajes((anteriores) => [
           ...anteriores,
-          crearMensajeTutor(respuesta),
+          ...crearMensajesRevision(
+            respuesta.seccion,
+            respuesta.observaciones,
+          ),
         ])
-      } catch {
+      } catch (error) {
+        const mensaje =
+          error instanceof ErrorTutor
+            ? error.message
+            : 'No se pudo obtener la revisión. Inténtalo de nuevo.'
+
         setMensajes((anteriores) => [
           ...anteriores,
-          crearMensajeTutor(
-            'No se pudo obtener respuesta del tutor. Inténtalo de nuevo.',
-          ),
+          crearMensajeTutor(mensaje),
         ])
       } finally {
         enviandoRef.current = false
         setEnviando(false)
       }
     },
-    [tipoDocumento],
+    [obtenerTexto, tipoDocumento],
   )
 
   return { mensajes, enviando, enviar }

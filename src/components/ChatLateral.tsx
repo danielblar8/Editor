@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as EventoTecladoReact } from 'react'
 import type { MensajeChat } from '../lib/chat'
+import { ETIQUETAS_TIPO_PROBLEMA } from '../lib/revisionTipos'
 
 type ChatLateralProps = {
   mensajes: MensajeChat[]
@@ -61,7 +62,7 @@ export function ChatLateral({
       top: lista.scrollHeight,
       behavior: sinMovimiento ? 'auto' : 'smooth',
     })
-  }, [mensajes])
+  }, [enviando, mensajes])
 
   useEffect(() => {
     if (!esMovil) return
@@ -156,7 +157,7 @@ export function ChatLateral({
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Tutor</h2>
             <p className="text-xs text-slate-500">
-              Respuestas simuladas · sin IA conectada
+              Revisión con IA · no modifica tu texto
             </p>
           </div>
 
@@ -201,6 +202,41 @@ export function ChatLateral({
               )
             }
 
+            if (mensaje.observacion) {
+              const {
+                parrafo_id,
+                tipo_problema,
+                observacion,
+                pregunta_guia,
+              } = mensaje.observacion
+
+              return (
+                <article
+                  key={mensaje.id}
+                  className="flex justify-start"
+                >
+                  <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm leading-relaxed text-slate-800">
+                    <p className="sr-only">Tutor:</p>
+                    <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[0.65rem] font-semibold tracking-wide text-white uppercase">
+                        Párrafo {parrafo_id}
+                      </span>
+                      <span className="text-xs font-medium text-slate-600">
+                        {ETIQUETAS_TIPO_PROBLEMA[tipo_problema]}
+                      </span>
+                    </div>
+                    <p>{observacion}</p>
+                    <p className="mt-2 border-t border-slate-200 pt-2 text-xs leading-relaxed text-slate-600">
+                      <span className="font-semibold text-slate-700">
+                        Pregunta guía:{' '}
+                      </span>
+                      {pregunta_guia}
+                    </p>
+                  </div>
+                </article>
+              )
+            }
+
             const esUsuario = mensaje.autor === 'usuario'
 
             return (
@@ -222,6 +258,17 @@ export function ChatLateral({
               </article>
             )
           })}
+
+          {enviando && (
+            <div className="flex justify-start">
+              <p
+                role="status"
+                className="rounded-2xl rounded-bl-md bg-slate-100 px-3.5 py-2.5 text-sm text-slate-500"
+              >
+                El tutor está revisando…
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="border-t border-slate-200 px-4 py-3">

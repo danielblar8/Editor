@@ -11,6 +11,7 @@ import { BarraHerramientas } from './BarraHerramientas'
 type EditorTextoProps = {
   documentoInicial: DocumentoGuardado
   tipoDocumento: TipoDocumentoId
+  onEditorListo?: (editor: Editor | null) => void
 }
 
 type EstadoGuardado = 'guardado' | 'pendiente' | 'error'
@@ -26,6 +27,7 @@ const TEXTO_ESTADO: Record<EstadoGuardado, string> = {
 export function EditorTexto({
   documentoInicial,
   tipoDocumento,
+  onEditorListo,
 }: EditorTextoProps) {
   const [estadoGuardado, setEstadoGuardado] =
     useState<EstadoGuardado>('guardado')
@@ -106,7 +108,12 @@ export function EditorTexto({
 
   useEffect(() => {
     editorRef.current = editor
-  }, [editor])
+    onEditorListo?.(editor)
+
+    return () => {
+      onEditorListo?.(null)
+    }
+  }, [editor, onEditorListo])
 
   // El tipo de documento es una acción discreta del usuario: se guarda de
   // inmediato, sin esperar al debounce del contenido, para que sobreviva a una

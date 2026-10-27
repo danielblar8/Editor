@@ -289,3 +289,131 @@ qué límites tiene.
 - El diálogo inicial no se repite tras una recarga, aunque se haya omitido.
 - La migración cubre únicamente v1→v2.
 - Sin commit de cierre de fase: queda pendiente de revisión manual.
+
+## Fase 3: agente tutor conectado a Gemini
+
+### Alcance de los pasos 4 y 5
+
+- El chat deja de usar respuestas simuladas y llama a `POST /api/revisar`.
+- El tutor solo diagnostica estructura y coherencia. No reescribe, no propone
+  texto nuevo y no corrige ortografía.
+- Cada observación mantiene el contrato acordado: `parrafo_id`,
+  `tipo_problema`, `observacion` y `pregunta_guia`.
+- Quedan fuera de esta fase el mapa del documento, la verificación cruzada, las
+  métricas calculadas, LanguageTool, el resaltado en el editor, los IDs
+  persistidos, la caché y el historial del chat.
+
+### Backend y contrato
+
+- `server/` contiene el backend con Hono. `api/` se reserva para el adaptador
+  de Vercel en la Fase 8.
+- `npm run dev` levanta Vite en el puerto 5173 y la API en el 3001 con
+  `concurrently`. Vite proxya `/api` al backend, así que el cliente siempre usa
+  rutas relativas y no conoce la URL del servidor.
+- `src/lib/revisionTipos.ts` es el contrato compartido: tipos de problema,
+  secciones, etiquetas en español, límite de 12.000 caracteres y
+  `detectarSeccion()`.
+- `server/esquema.ts` valida con Zod la petición y la salida del modelo. La
+  validación de la petición es estricta; la de las observaciones se aplica
+  también a la respuesta de Gemini mediante `Output.array`.
+- La API key y el modelo se leen solo en el servidor desde `GEMINI_API_KEY` y
+  `GEMINI_MODEL`. Si falta cualquiera de las dos, la API responde con
+  `configuracion` y un mensaje que indica qué revisar.
+- `GET /api/salud` devuelve `{ ok: true, mensaje: "hola" }` para comprobar que
+  el backend está en marcha.
+
+### Prompts por tipo de documento
+
+- `server/prompts.ts` construye el prompt y no se envía desde el cliente. Así
+  las reglas no dependen de lo que llegue en la petición.
+- Hay una base común: actuar como tutor, no reescribir ni proponer frases, no
+  corregir ortografía, describir problemas verificables, formular una sola
+  pregunta abierta de 20 palabras como máximo, usar solo los números de
+  párrafo del documento, no inventar problemas y responder en español.
+- Los criterios cambian por tipo:
+  - Ensayo argumentativo: tesis, argumentos justificados, ideas anunciadas que
+    se desarrollan, cierre coherente y equilibrio entre secciones.
+  - Reporte de investigación: objetivo, método, resultados, conclusiones
+    sustentadas y proporción entre secciones.
+  - Texto abierto: coherencia, progresión, desarrollo y cierre, sin rúbrica
+    rígida.
+- El enfoque cambia por sección: introducción, conclusión o documento completo.
+  Si no se reconoce la sección pedida, el prompt pide decirlo sin inventar
+  contenido.
+- El servidor divide el texto por líneas en blanco y numera los párrafos solo
+  para el prompt (`[PÁRRAFO N]`). Esos IDs no se persisten.
+- El documento se marca como material de solo lectura para evitar que el modelo
+  siga instrucciones incluidas en el texto del usuario.
+- Si no hay problemas reales, el modelo debe devolver una lista vacía. El
+  cliente lo convierte en un mensaje normal, sin inventar tarjetas.
+
+### Llamada a Gemini y errores
+
+- `server/gemini.ts` usa Vercel AI SDK (`generateText` + `Output.array`) y
+  valida la salida con Zod. La llamada tiene un timeout de 45 s.
+- Los errores se traducen a códigos estables y mensajes en español:
+  `peticion_invalida` (400), `texto_vacio` (400), `texto_demasiado_largo`
+  (413), `cuota_agotada` (429), `respuesta_invalida` (502),
+  `servicio_no_disponible` (503), `tiempo_agotado` (504), `configuracion`
+  (500), `api_gemini` (502), `sin_conexion` (503) y `error_interno` (500).
+- El cliente traduce esos códigos a mensajes legibles. Si el `fetch` falla por
+  red o timeout, muestra un mensaje de conexión o de tiempo agotado.
+- **Cambio de modelo por alta demanda:** el modelo configurado al principio
+  (`gemini-3.8-flash`) respondió con errores de alta demanda y timeouts. Se
+  cambió el valor de `GEMINI_MODEL` únicamente en `.env`, sin tocar el código.
+  El backend no fija ningún modelo por defecto: si la variable falta o el
+  modelo no está disponible, devuelve `configuracion` o
+  `servicio_no_disponible`. Para reproducir el entorno hay que usar un modelo
+  disponible en la cuenta y actualizar `.env.example` solo si se decide cambiar
+  el valor de referencia.
+
+### Cliente: chat, editor y presentación
+
+- `src/lib/chat.ts` contiene `responderTutor()`, que llama a `/api/revisar` con
+  `{ texto, tipoDocumento, seccion }`, valida ligeramente la respuesta y
+  devuelve `{ seccion, observaciones }`. No conoce Gemini ni recibe el editor.
+- `detectarSeccion()` normaliza el mensaje (quita tildes y pasa a minúsculas):
+  si menciona «introducción» revisa la introducción; si menciona «conclusión»,
+  la conclusión; cualquier otro mensaje, incluidos «huecos» y «argumento»,
+  revisa el documento completo. La detección fina llegará en fases posteriores.
+- `src/lib/parrafos.ts` extrae los bloques de nivel superior del editor con
+  `editor.state.doc` y `textBetween`. Es solo lectura: no usa comandos de
+  TipTap ni cambia la selección. Los bloques vacíos se descartan y se unen con
+  una línea en blanco.
+- `src/hooks/useChatTutor.ts` recibe `obtenerTexto`, comprueba que el documento
+  no esté vacío y que no supere el límite antes de llamar al backend, y maneja
+  `enviando` con un guard para evitar dobles envíos.
+- `App` guarda la referencia del editor mediante `onEditorListo` y la pasa al
+  hook. El editor no se modifica en ningún momento.
+- `ChatLateral` muestra «El tutor está revisando…» mientras espera. Las
+  observaciones se presentan como tarjetas con el número de párrafo, el tipo de
+  problema, la observación y la pregunta guía. Los mensajes de error y el aviso
+  de documento vacío o demasiado largo aparecen como mensajes normales del
+  tutor.
+- La cabecera del chat indica «Revisión con IA · no modifica tu texto».
+
+### Verificación
+
+- `npm run typecheck`, `npm run lint` y `npm run build` pasan sin errores.
+- Se comprobó que el prompt cambia por tipo de documento (tesis, objetivo y
+  método, rúbrica abierta) y por sección (introducción y conclusión).
+- Se probó la lógica del cliente con `fetch` simulado: detección de secciones,
+  cuerpo enviado, respuesta válida, 429, respuesta inválida y mensaje cuando no
+  hay problemas.
+- Se hizo una llamada real a `POST /api/revisar` con la sección `introduccion`:
+  respondió `200` con observaciones que cumplen el esquema.
+- Se comprobó en Edge headless que la aplicación renderiza la cabecera, el
+  selector de tipo, la barra de formato y el editor.
+
+### Límites conocidos de la Fase 3
+
+- Sin mapa del documento, verificación cruzada ni métricas calculadas: el
+  modelo recibe el texto completo y decide qué observar.
+- Sin gramática ni ortografía automática más allá del corrector nativo.
+- Sin resaltado de observaciones en el editor ni IDs de párrafo persistentes.
+- Sin caché ni historial del chat: cada envío vuelve a llamar a Gemini y el
+  historial se pierde al recargar.
+- Sin autenticación ni cuota por usuario. El límite de 12.000 caracteres es la
+  única protección de tamaño.
+- La calidad depende del modelo configurado y de la cuota gratuita disponible.
+- Sin commit de cierre de fase: queda pendiente de revisión manual.
