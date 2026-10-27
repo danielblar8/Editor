@@ -65,4 +65,4 @@ ideas nuevas en la conclusión, desequilibrio entre secciones.
 - Fase 7: Pruebas y pulido (manejo de errores, estados de carga)
 - Fase 8: Despliegue en Vercel y documentación
 
-## Fase actual: 0
+## Fase actual: 1

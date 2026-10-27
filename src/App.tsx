@@ -1,21 +1,55 @@
+import { useEffect, useState } from 'react'
+import { EditorTexto } from './components/EditorTexto'
+import type { DocumentoGuardado } from './lib/storage'
+import { cargarDocumento } from './lib/storage'
+
 function App() {
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-slate-50 p-6 text-center">
-      <p className="text-sm font-medium tracking-widest text-slate-500 uppercase">
-        Fase 0 · Preparación
-      </p>
-      <h1 className="text-3xl font-semibold text-slate-900">
-        Editor de Texto Web con Tutor de IA
-      </h1>
-      <p className="max-w-xl text-slate-600">
-        Proyecto base listo. El editor con TipTap llega en la Fase 1; el tutor
-        de IA, en la Fase 3.
-      </p>
-      <p className="text-xs text-slate-400">
-        Prueba de humo: <code className="font-mono">npm run smoke</code>
-      </p>
-    </main>
-  )
+  const [documento, setDocumento] = useState<DocumentoGuardado | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let activo = true
+
+    cargarDocumento()
+      .then((cargado) => {
+        if (activo) setDocumento(cargado)
+      })
+      .catch(() => {
+        if (!activo) return
+        setError(
+          'No se pudo cargar el documento. Comprueba que el navegador permita usar el almacenamiento local y recarga la página.',
+        )
+      })
+
+    return () => {
+      activo = false
+    }
+  }, [])
+
+  if (error) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-200 px-6">
+        <p
+          role="alert"
+          className="max-w-md rounded-lg bg-white p-6 text-center text-sm text-red-700 shadow-lg"
+        >
+          {error}
+        </p>
+      </main>
+    )
+  }
+
+  if (!documento) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-200 px-6">
+        <p aria-live="polite" className="text-sm text-slate-600">
+          Cargando documento…
+        </p>
+      </main>
+    )
+  }
+
+  return <EditorTexto documentoInicial={documento} />
 }
 
 export default App
