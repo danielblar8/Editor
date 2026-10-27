@@ -28,28 +28,10 @@ import {
   generateText,
 } from 'ai'
 import { z } from 'zod'
+import { ETIQUETAS_TIPO_PROBLEMA } from '../src/lib/revisionTipos.ts'
+import { esquemaObservacion, esquemaObservaciones } from '../server/esquema.ts'
 
 const RUTA_POR_DEFECTO = 'scripts/fixtures/ensayo-prueba.txt'
-
-const TIPOS_DE_PROBLEMA = [
-  'hueco_argumental',
-  'idea_no_retomada',
-  'desarrollo_corto',
-  'conclusion_incoherente',
-  'idea_nueva_en_conclusion',
-  'desequilibrio_entre_secciones',
-] as const
-
-type TipoProblema = (typeof TIPOS_DE_PROBLEMA)[number]
-
-const ETIQUETAS_TIPO_PROBLEMA: Record<TipoProblema, string> = {
-  hueco_argumental: 'Hueco argumental',
-  idea_no_retomada: 'Idea no retomada',
-  desarrollo_corto: 'Desarrollo corto',
-  conclusion_incoherente: 'Conclusión incoherente',
-  idea_nueva_en_conclusion: 'Idea nueva en la conclusión',
-  desequilibrio_entre_secciones: 'Desequilibrio entre secciones',
-}
 
 type UsoDeTokens = {
   inputTokens?: number
@@ -57,30 +39,9 @@ type UsoDeTokens = {
   totalTokens?: number
 }
 
-const esquemaObservacion = z.object({
-  parrafo_id: z
-    .number()
-    .int()
-    .positive()
-    .describe('Número del párrafo observado, tal como aparece en [PÁRRAFO N].'),
-  tipo_problema: z
-    .enum(TIPOS_DE_PROBLEMA)
-    .describe('Categoría del problema detectado.'),
-  observacion: z
-    .string()
-    .min(1)
-    .describe(
-      'Diagnóstico breve y concreto, en español, sin reescribir el texto del autor.',
-    ),
-  pregunta_guia: z
-    .string()
-    .min(1)
-    .describe(
-      'Pregunta abierta para que el autor revise su propio texto sin recibir una versión corregida.',
-    ),
-})
-
-const esquemaSalida = z.array(esquemaObservacion)
+// El esquema es el mismo que usa el backend; el smoke solo lo ejecuta contra
+// Gemini para comprobar que la salida sigue siendo válida.
+const esquemaSalida = esquemaObservaciones
 
 const PROMPT_SISTEMA = `Eres un tutor de escritura académica en español. Evalúas la estructura y la coherencia de un ensayo argumentativo.
 
