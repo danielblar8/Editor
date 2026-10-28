@@ -4,11 +4,12 @@ Editor de texto tipo Word con un tutor de IA en un chat lateral. El tutor
 evalúa estructura y coherencia a demanda y **nunca** reescribe el texto del
 usuario.
 
-Estado actual: **Fase 3 (agente tutor conectado a Gemini)**. Ya existe la hoja
-de escritura con TipTap, la barra de formato, el corrector ortográfico nativo,
-el contador de palabras, el autoguardado, el selector de tipo de documento y un
-chat lateral que revisa estructura y coherencia con IA real a demanda. El tutor
-no modifica el texto: solo devuelve observaciones y preguntas guía.
+Estado actual: **Fase 4 (gramática en tiempo real con LanguageTool)**. Ya existe
+la hoja de escritura con TipTap, la barra de formato, el corrector ortográfico
+nativo, el contador de palabras, el autoguardado, el selector de tipo de
+documento, un chat lateral que revisa estructura y coherencia con IA real a
+demanda y una revisión gramatical automática con subrayados. El tutor no
+modifica el texto: solo devuelve observaciones y preguntas guía.
 
 ## Requisitos
 
@@ -17,6 +18,9 @@ no modifica el texto: solo devuelve observaciones y preguntas guía.
 - npm.
 - Una clave de Gemini de [Google AI Studio](https://aistudio.google.com/apikey)
   para el chat con IA y para la prueba de humo.
+- Conexión a internet y una instancia accesible de LanguageTool para la
+  revisión gramatical. La API pública no requiere clave; también se puede
+  apuntar `LANGUAGETOOL_URL` a un servidor propio.
 
 ## Puesta en marcha
 
@@ -30,6 +34,7 @@ Edita `.env` y pega tu clave:
 ```env
 GEMINI_API_KEY=tu_clave_aqui
 GEMINI_MODEL=gemini-2.5-flash
+LANGUAGETOOL_URL=https://api.languagetool.org
 ```
 
 `GEMINI_MODEL` debe ser un modelo disponible en tu cuenta. El backend no fija
@@ -38,8 +43,13 @@ mostrará un error de configuración. Durante el desarrollo, `gemini-3.8-flash`
 dio errores de alta demanda y se cambió solo el valor de `.env`; el código no
 se modificó.
 
-Nunca subas `.env` al repositorio. La clave vive únicamente en el servidor: el
-frontend llama a `/api`, nunca a Gemini.
+`LANGUAGETOOL_URL` es la URL base del servicio de gramática; el backend le
+añade `/v2/check`. Si falta, el editor sigue funcionando pero el pie muestra
+«Gramática no disponible». No requiere clave con la API pública. Se puede
+cambiar por la URL de una instancia propia sin tocar el código.
+
+Nunca subas `.env` al repositorio. La clave de Gemini vive únicamente en el
+servidor: el frontend llama a `/api`, nunca a Gemini ni a LanguageTool.
 
 ## Comandos
 
@@ -119,44 +129,101 @@ Códigos de salida: `0` éxito, `1` error de validación, `2` error de API,
 
 ### Endpoints
 
-| Método | Ruta           | Descripción                                            |
-| ------ | -------------- | ------------------------------------------------------ |
-| `GET`  | `/api/salud`   | Comprueba que el backend está en marcha.               |
-| `POST` | `/api/revisar` | Recibe `{ texto, tipoDocumento, seccion }` y devuelve observaciones validadas con Zod. |
+| Método | Ruta             | Descripción                                            |
+| ------ | ---------------- | ------------------------------------------------------ |
+| `GET`  | `/api/salud`     | Comprueba que el backend está en marcha.               |
+| `POST` | `/api/revisar`   | Recibe `{ texto, tipoDocumento, seccion }` y devuelve observaciones validadas con Zod. |
+| `POST` | `/api/gramatica` | Recibe `{ parrafos: [{ clave, texto }] }` y devuelve errores gramaticales con offsets por párrafo. |
 
-Códigos de error del backend: `peticion_invalida`, `texto_vacio`,
+Códigos de error del chat: `peticion_invalida`, `texto_vacio`,
 `texto_demasiado_largo`, `cuota_agotada`, `configuracion`,
 `respuesta_invalida`, `servicio_no_disponible`, `api_gemini`,
 `tiempo_agotado`, `sin_conexion` y `error_interno`.
+
+Códigos de error de gramática: `peticion_invalida`, `texto_vacio`,
+`demasiados_parrafos`, `parrafo_demasiado_largo`, `texto_demasiado_largo`,
+`configuracion`, `cuota_agotada`, `servicio_no_disponible`, `tiempo_agotado`,
+`respuesta_invalida` y `error_interno`.
+
+## Gramática en tiempo real (Fase 4)
+
+- La revisión se lanza automáticamente **1,5 s después** de dejar de escribir y
+  también al abrir el documento. El pie muestra `Revisando gramática…`,
+  `Gramática revisada`, `Gramática sin texto` o `Gramática no disponible`.
+- Los errores aparecen como un subrayado ondulado ámbar. Al pasar el cursor se
+  muestra el mensaje de LanguageTool. Los subrayados no modifican el documento
+  ni el JSON guardado.
+- **Solo gramática:** las faltas de ortografía se descartan porque ya las marca
+  el corrector nativo del navegador. Sin diccionario español instalado, el
+  navegador no subraya faltas, aunque LanguageTool puede seguir marcando
+  problemas gramaticales.
+- **Límites por tanda:** 20 párrafos, 4.000 caracteres por párrafo y 12.000 en
+  total. Los párrafos más largos se omiten. El cliente envía varias tandas
+  secuenciales, cachea en memoria hasta 400 resultados y reintenta tras un 429
+  (60 s) o un fallo de servicio (30 s).
+- **Privacidad:** el texto de cada párrafo se envía al backend y este a
+  `LANGUAGETOOL_URL`. No se envía a Gemini. Todavía no hay un aviso de
+  privacidad específico en la interfaz (Fase 7).
+- El endpoint no tiene autenticación, cuota por usuario ni rate limit del lado
+  servidor (Fases 7/8).
+
+### Cómo probar la gramática
+
+1. Ejecuta `npm run dev` con `LANGUAGETOOL_URL` definida en `.env`.
+2. Abre http://localhost:5173 y escribe una frase con un error gramatical, por
+   ejemplo: `Los estudiantes esta cansados.`.
+3. Espera ~1,5 s: aparece el subrayado; al pasar el cursor, el mensaje.
+4. Comprueba que el pie pasa por `Revisando gramática…` y `Gramática revisada`.
+5. Corrige el error y espera: el subrayado desaparece.
+6. Espera a que el pie diga `Guardado` y deja terminar la revisión. No debe
+   volver a `Guardando…`; la transacción que pinta los subrayados no guarda.
+
+Pruebas automatizadas de mapeo de offsets:
+
+```bash
+node --import tsx --test scripts/prueba-gramatica.ts
+```
+
+Si el pie muestra `Gramática no disponible`, revisa que `LANGUAGETOOL_URL` sea
+accesible. Tras un 429, el cliente espera 60 s antes de reintentar.
 
 ## Estructura
 
 ```
 server/
   index.ts                     Arranque de la API (Hono + Node)
-  app.ts                       Rutas /api/salud y /api/revisar
+  app.ts                       Rutas /api/salud, /api/revisar y /api/gramatica
   esquema.ts                   Esquemas Zod de petición y observaciones
+  esquemaGramatica.ts          Validación de peticiones y respuestas de gramática
   gemini.ts                    Llamada a Gemini, timeout y errores
+  languagetool.ts              Llamada a LanguageTool y mapeo de offsets
   prompts.ts                   Prompts por tipo y sección
 scripts/
   fixtures/ensayo-prueba.txt   Ensayo con defectos deliberados
   smoke-gemini.ts              Verificación aislada contra Gemini
+  prueba-gramatica.ts          Pruebas de mapeo y filtrado gramatical
 src/
   components/
-    EditorTexto.tsx            Editor, hoja y autoguardado
+    EditorTexto.tsx            Editor, hoja, autoguardado y estado gramatical
     BarraHerramientas.tsx      Botones de formato
     EncabezadoApp.tsx          Cabecera, selector y botón del chat
     SelectorTipoDocumento.tsx  Selector de tipo de documento
     DialogoTipoDocumento.tsx   Elección inicial del tipo
     ChatLateral.tsx            Panel visual del chat
+  extensions/
+    GramaticaDecoraciones.ts   Subrayados sin modificar el documento
   hooks/
     useChatTutor.ts            Estado del chat y envío al backend
+    useGramatica.ts            Conexión del planificador con el editor
   lib/
     storage.ts                 Persistencia (localStorage, formato v2)
     tiposDocumento.ts          Catálogo único de tipos de documento
     revisionTipos.ts           Contrato compartido y detección de sección
     parrafos.ts                Extracción de párrafos en solo lectura
     chat.ts                    Mensajes y llamada a /api/revisar
+    gramaticaTipos.ts          Contrato compartido y límites de gramática
+    gramaticaPosiciones.ts     Extracción y offsets de ProseMirror
+    gramatica.ts               Llamada, caché y planificador de gramática
     texto.ts                   Conteo de palabras
   App.tsx                      Carga, layout y referencia del editor
 docs/decisiones.md             Registro de decisiones técnicas

@@ -2,6 +2,9 @@ import type { Editor } from '@tiptap/core'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { GramaticaDecoraciones } from '../extensions/GramaticaDecoraciones'
+import { useGramatica } from '../hooks/useGramatica'
+import type { EstadoGramatica } from '../lib/gramaticaTipos'
 import type { DocumentoGuardado } from '../lib/storage'
 import { guardarDocumento } from '../lib/storage'
 import { contarPalabras, formatearPalabras } from '../lib/texto'
@@ -22,6 +25,27 @@ const TEXTO_ESTADO: Record<EstadoGuardado, string> = {
   guardado: 'Guardado',
   pendiente: 'Guardando…',
   error: 'No se pudo guardar',
+}
+
+const TEXTO_GRAMATICA: Record<EstadoGramatica, string> = {
+  inactivo: 'Gramática sin texto',
+  revisando: 'Revisando gramática…',
+  listo: 'Gramática revisada',
+  no_disponible: 'Gramática no disponible',
+}
+
+const PUNTO_GRAMATICA: Record<EstadoGramatica, string> = {
+  inactivo: 'bg-slate-300',
+  revisando: 'bg-amber-500',
+  listo: 'bg-emerald-500',
+  no_disponible: 'bg-red-500',
+}
+
+const COLOR_GRAMATICA: Record<EstadoGramatica, string> = {
+  inactivo: 'text-slate-500',
+  revisando: 'text-amber-700',
+  listo: 'text-emerald-700',
+  no_disponible: 'text-red-600',
 }
 
 export function EditorTexto({
@@ -74,6 +98,7 @@ export function EditorTexto({
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
+      GramaticaDecoraciones,
     ],
     content: documentoInicial.contenido,
     editorProps: {
@@ -84,7 +109,9 @@ export function EditorTexto({
         'aria-label': 'Hoja de escritura',
       },
     },
-    onUpdate: ({ editor: editorActual }) => {
+    onUpdate: ({ editor: editorActual, transaction }) => {
+      if (!transaction.docChanged) return
+
       versionRef.current += 1
       guardadoPendienteRef.current = true
       setEstadoGuardado('pendiente')
@@ -99,6 +126,8 @@ export function EditorTexto({
       }, RETRASO_GUARDADO_MS)
     },
   })
+
+  const estadoGramatica = useGramatica(editor)
 
   const palabras = useEditorState({
     editor,
@@ -162,16 +191,28 @@ export function EditorTexto({
           <EditorContent editor={editor} className="flex-1" />
 
           <footer className="mt-10 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4 text-xs">
-            <p
-              aria-live="polite"
-              className={
-                estadoGuardado === 'error'
-                  ? 'font-medium text-red-600'
-                  : 'text-slate-500'
-              }
-            >
-              {TEXTO_ESTADO[estadoGuardado]}
-            </p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <p
+                aria-live="polite"
+                className={
+                  estadoGuardado === 'error'
+                    ? 'font-medium text-red-600'
+                    : 'text-slate-500'
+                }
+              >
+                {TEXTO_ESTADO[estadoGuardado]}
+              </p>
+              <p
+                aria-live="polite"
+                className={`flex items-center gap-1.5 font-medium ${COLOR_GRAMATICA[estadoGramatica]}`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`size-1.5 rounded-full ${PUNTO_GRAMATICA[estadoGramatica]}`}
+                />
+                {TEXTO_GRAMATICA[estadoGramatica]}
+              </p>
+            </div>
             <p className="font-medium text-slate-600 tabular-nums">
               {formatearPalabras(palabras)}
             </p>

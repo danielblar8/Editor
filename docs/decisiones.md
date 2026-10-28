@@ -417,3 +417,148 @@ qué límites tiene.
   única protección de tamaño.
 - La calidad depende del modelo configurado y de la cuota gratuita disponible.
 - Sin commit de cierre de fase: queda pendiente de revisión manual.
+
+## Fase 4 — Gramática en tiempo real con LanguageTool (2026-10-28)
+
+### Alcance y arquitectura
+
+- La revisión gramatical se ejecuta automáticamente tras una pausa de escritura
+  de **1500 ms** y también al abrir el documento. No hay botón de «revisar
+  gramática»: el resultado aparece como subrayado mientras se escribe.
+- El frontend nunca llama a LanguageTool. Envía los párrafos a
+  `POST /api/gramatica`; el backend es el único que conoce
+  `LANGUAGETOOL_URL` y el único que habla con el servicio externo.
+- El contrato compartido vive en `src/lib/gramaticaTipos.ts`: tipos de petición
+  y respuesta, códigos de error, estados de la interfaz y límites. El cliente y
+  el servidor importan los mismos valores.
+- La petición usa `{ parrafos: [{ clave, texto }] }` y la respuesta correcta
+  `{ ok: true, errores: [{ clave, inicio, fin, mensaje, regla }] }`. No existe
+  ningún campo de texto corregido ni de reescritura: el agente y LanguageTool
+  solo diagnostican.
+- Los offsets son **UTF-16**, igual que los de JavaScript y ProseMirror. No se
+  normalizan tildes, comillas ni espacios antes de enviar el texto.
+
+### Extracción y contrato de párrafos
+
+- `src/lib/gramaticaPosiciones.ts` recorre el documento con `doc.descendants` y
+  extrae cada textblock por separado. No reutiliza `src/lib/parrafos.ts` porque
+  ese módulo normaliza espacios y uniría bloques, lo que rompería la
+  correspondencia con LanguageTool.
+- El texto de cada bloque se obtiene desde `pos + 1`; `hardBreak` se convierte
+  en `"\n"` y los nodos inline atómicos en `"\uFFFC"`. Así la longitud del texto
+  coincide con `content.size` y los offsets se trasladan sin ajustes.
+- Las claves actuales son efímeras: `p{indice}-{hash-del-texto}`. La caché se
+  indexa por el texto, no por la clave, para sobrevivir a cambios de posición.
+  Persistir IDs por párrafo queda para la Fase 6.
+- Límites por petición: **20 párrafos**, **4.000 caracteres por párrafo** y
+  **12.000 caracteres en total**. El servidor rechaza una petición que no los
+  cumpla. Los párrafos vacíos y los que superan 4.000 caracteres no se envían.
+- El cliente divide el documento en tandas secuenciales que respetan esos
+  límites. Si una tanda falla, no se envían las siguientes; se conservan los
+  subrayados ya cacheados.
+
+### Backend
+
+- `server/app.ts` expone `POST /api/gramatica`. `server/esquemaGramatica.ts`
+  valida la forma con Zod y aplica los límites con códigos específicos;
+  `server/languagetool.ts` realiza la llamada externa.
+- `LANGUAGETOOL_URL` es obligatoria y se lee solo en el servidor. Se le quitan
+  las barras finales y se añade `/v2/check`; no hay URL fija en el código. Si
+  falta, la API responde `configuracion` y el cliente desactiva la revisión
+  durante esa sesión.
+- LanguageTool recibe `language=es` y los párrafos unidos con `"\n\n"`. El
+  backend busca el rango de cada coincidencia y la descarta si cruza párrafos,
+  si sale del rango o si sus límites no son válidos.
+- **Ortografía:** se descartan las coincidencias con
+  `rule.issueType === "misspelling"` y, como respaldo para respuestas sin
+  `issueType`, las reglas cuyo ID empieza por `MORFOLOGIK_` o `HUNSPELL_`. La
+  ortografía sigue siendo responsabilidad del corrector nativo del navegador;
+  así se evitan dos subrayados distintos para la misma falta.
+- El servidor usa un timeout de **8 s** combinado con la señal de aborto de la
+  petición. El cliente usa **10 s** para no quedarse esperando una respuesta
+  que el servidor ya abandonó.
+- Errores traducidos: `peticion_invalida` (400), `texto_vacio` (400),
+  `demasiados_parrafos` y `parrafo_demasiado_largo` (413),
+  `texto_demasiado_largo` (413), `configuracion` (500), `cuota_agotada` (429),
+  `servicio_no_disponible` (503), `tiempo_agotado` (504),
+  `respuesta_invalida` (502) y `error_interno` (500).
+
+### Cliente: planificador, caché y estados
+
+- `src/lib/gramatica.ts` contiene la llamada `revisarGramatica`, la caché y el
+  `PlanificadorGramatica`. `src/hooks/useGramatica.ts` conecta el planificador
+  con el editor y expone el estado a la interfaz.
+- La caché es **en memoria**, de 400 entradas como máximo. Se indexa por un
+  hash FNV-1a más la longitud y guarda también el texto completo para descartar
+  colisiones. Solo se piden a la red los párrafos que no están cacheados.
+- Las tandas son secuenciales para no saturar la API pública. Una revisión
+  nueva aborta la anterior y usa un contador de secuencia para ignorar
+  respuestas viejas.
+- Si el servicio responde `429`, se espera **60 s** antes de reintentar; si
+  responde `5xx` o hay un fallo de red, **30 s**. Un timeout o una respuesta
+  inválida se muestran como no disponibles sin bloquear la escritura. Un
+  `configuracion` desactiva la revisión durante la sesión.
+- Los estados visibles en el pie son `inactivo`, `revisando`, `listo` y
+  `no_disponible`. Los subrayados ya cacheados se mantienen si una revisión
+  posterior falla.
+
+### Decoraciones y autoguardado
+
+- `src/extensions/GramaticaDecoraciones.ts` registra un plugin con
+  `PluginKey`. Las decoraciones se guardan en el estado del plugin como
+  `DecorationSet`.
+- Cuando llega el metadato `gramaticaDecoraciones`, se reconstruyen las
+  decoraciones a partir de los errores. En cualquier otra transacción con
+  cambios de documento se usa
+  `decoracionesAnteriores.map(transaccion.mapping, transaccion.doc)`; en las
+  transacciones que no cambian el documento se reutiliza el mismo
+  `DecorationSet`. No se recalcula todo en cada transacción.
+- Las decoraciones son `Decoration.inline` con la clase `error-gramatica`,
+  `title`, `data-mensaje` y `data-regla`. No crean marcas ni modifican el JSON
+  del documento. El estilo es un subrayado ondulado ámbar y un tooltip CSS al
+  pasar el cursor.
+- La transacción que aplica los errores solo lleva metadatos y tiene
+  `docChanged === false`. `EditorTexto` ignora explícitamente las
+  actualizaciones sin cambios de documento, así que revisar la gramática no
+  dispara el autoguardado ni cambia «Guardado» a «Guardando…».
+
+### Verificación realizada
+
+- `npm run typecheck`, `npm run lint` y `npm run build` pasan sin errores.
+- `node --import tsx --test scripts/prueba-gramatica.ts` ejecuta 8 pruebas:
+  mapeo de errores simples, tildes, emoji UTF-16, listas con viñetas y
+  numeradas, `hardBreak`, rangos inválidos y filtrado de `MORFOLOGIK` /
+  `HUNSPELL` conservando una regla de concordancia.
+- La Fase 4 pasó las pruebas manuales en el editor: subrayado tras la pausa,
+  tooltip, transición de estados en el pie, desaparición del subrayado al
+  corregir y autoguardado sin disparos por la transacción de metadatos.
+
+### Límites conocidos de la Fase 4
+
+- Los IDs de párrafo no son persistentes: se recalculan con la posición y el
+  texto. El formato de documento sigue siendo v2; los IDs estables y el formato
+  v3 corresponden a la Fase 6.
+- LanguageTool se consulta sin caché ni límite de peticiones en el servidor.
+  Cada cliente puede generar varias tandas por edición. Una caché o un rate
+  limit del lado servidor queda para las Fases 7/8.
+- El endpoint no tiene autenticación ni cuota por usuario. Queda para la
+  Fase 8.
+- Se usa la API pública de LanguageTool. En Vercel muchas instancias pueden
+  compartir IP de salida, así que el límite por IP puede afectar a todos los
+  usuarios a la vez. El cliente espera 60 s tras un 429, pero no hay una
+  solución distribuida; queda para la Fase 8.
+- El texto de los párrafos se envía a LanguageTool, un servicio externo. La
+  interfaz todavía no muestra un aviso de privacidad específico; queda para la
+  Fase 7.
+- Los subrayados no son navegables por teclado: no tienen `tabindex` para no
+  interferir con la edición. La navegación por teclado entre errores queda para
+  la Fase 7.
+- Sin diccionario español en el navegador no se marcan las faltas de
+  ortografía. La gramática de LanguageTool sí puede seguir funcionando, pero el
+  resaltado ortográfico nativo desaparece.
+- La caché es solo de sesión: al recargar se vuelve a revisar el documento.
+- Solo se admite español (`es`); no hay selección de variantes regionales.
+- El resaltado del tutor en el editor no está implementado. Los subrayados
+  actuales son solo gramaticales; el resaltado de observaciones del tutor queda
+  para la Fase 6.
+- Sin commit de cierre de fase: queda pendiente de revisión manual.

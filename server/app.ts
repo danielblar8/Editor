@@ -1,7 +1,10 @@
 import { Hono } from 'hono'
+import { MENSAJES_ERROR_GRAMATICA } from '../src/lib/gramaticaTipos.ts'
 import { LIMITE_CARACTERES_TEXTO } from '../src/lib/revisionTipos.ts'
 import { esquemaPeticionRevision } from './esquema.ts'
+import { validarPeticionGramatica } from './esquemaGramatica.ts'
 import { ErrorRevision, revisarConGemini } from './gemini.ts'
+import { ErrorGramatica, revisarConLanguageTool } from './languagetool.ts'
 
 export const app = new Hono()
 
@@ -70,6 +73,42 @@ app.post('/api/revisar', async (c) => {
   return c.json({ ok: true, observaciones })
 })
 
+app.post('/api/gramatica', async (c) => {
+  let cuerpo: unknown
+
+  try {
+    cuerpo = await c.req.json()
+  } catch {
+    return c.json(
+      {
+        ok: false,
+        codigo: 'peticion_invalida',
+        mensaje: MENSAJES_ERROR_GRAMATICA.peticion_invalida,
+      },
+      400,
+    )
+  }
+
+  const validacion = validarPeticionGramatica(cuerpo)
+  if (!validacion.ok) {
+    return c.json(
+      {
+        ok: false,
+        codigo: validacion.codigo,
+        mensaje: validacion.mensaje,
+      },
+      validacion.estado,
+    )
+  }
+
+  const errores = await revisarConLanguageTool({
+    parrafos: validacion.datos.parrafos,
+    signal: c.req.raw.signal,
+  })
+
+  return c.json({ ok: true, errores })
+})
+
 app.notFound((c) =>
   c.json(
     {
@@ -83,6 +122,13 @@ app.notFound((c) =>
 
 app.onError((error, c) => {
   if (error instanceof ErrorRevision) {
+    return c.json(
+      { ok: false, codigo: error.codigo, mensaje: error.message },
+      error.estado,
+    )
+  }
+
+  if (error instanceof ErrorGramatica) {
     return c.json(
       { ok: false, codigo: error.codigo, mensaje: error.message },
       error.estado,
