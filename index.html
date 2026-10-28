@@ -5,6 +5,40 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Editor de Texto Web con Tutor de IA</title>
+    <script>
+      // La clave y los valores válidos también están definidos en
+      // src/lib/storage.ts. Mantén ambos sitios sincronizados.
+      ;(() => {
+        const clave = 'editor-tutor-ia:tema'
+        const valores = ['sistema', 'claro', 'oscuro']
+
+        const aplicar = (preferencia) => {
+          let resuelto = preferencia
+
+          if (preferencia === 'sistema') {
+            try {
+              resuelto = window.matchMedia('(prefers-color-scheme: dark)')
+                .matches
+                ? 'oscuro'
+                : 'claro'
+            } catch {
+              resuelto = 'claro'
+            }
+          }
+
+          document.documentElement.dataset.theme = resuelto
+          document.documentElement.style.colorScheme =
+            resuelto === 'oscuro' ? 'dark' : 'light'
+        }
+
+        try {
+          const guardada = localStorage.getItem(clave)
+          aplicar(valores.includes(guardada) ? guardada : 'sistema')
+        } catch {
+          aplicar('sistema')
+        }
+      })()
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -14,7 +14,7 @@ export function SelectorTipoDocumento({
     <div className="flex min-w-0 items-center gap-2">
       <label
         htmlFor="tipo-documento"
-        className="hidden text-sm font-medium whitespace-nowrap text-slate-600 md:block"
+        className="hidden text-sm font-medium whitespace-nowrap text-muted md:block"
       >
         Tipo de documento
       </label>
@@ -27,7 +27,7 @@ export function SelectorTipoDocumento({
           const nuevo = evento.target.value
           if (esTipoDocumentoId(nuevo)) onCambiar(nuevo)
         }}
-        className="h-9 w-[11.5rem] min-w-0 truncate rounded-md border border-slate-300 bg-white px-2.5 text-sm text-slate-800 shadow-sm transition-colors hover:border-slate-400 focus-visible:border-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 sm:w-[13.5rem]"
+        className="h-9 w-[11.5rem] min-w-0 truncate rounded-md border border-line bg-surface px-2.5 text-sm text-ink shadow-sm transition-colors hover:border-subtle focus-visible:border-focus focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus sm:w-[13.5rem]"
       >
         {TIPOS_DOCUMENTO.map((tipo) => (
           <option key={tipo.id} value={tipo.id}>

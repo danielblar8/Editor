@@ -1,5 +1,7 @@
 import type { RefObject } from 'react'
+import type { PreferenciaTema, TemaResuelto } from '../lib/tema'
 import type { TipoDocumentoId } from '../lib/tiposDocumento'
+import { ControlTema } from './ControlTema'
 import { SelectorTipoDocumento } from './SelectorTipoDocumento'
 
 type EncabezadoAppProps = {
@@ -8,6 +10,8 @@ type EncabezadoAppProps = {
   chatAbierto: boolean
   onAlternarChat: () => void
   botonChatRef: RefObject<HTMLButtonElement | null>
+  temaResuelto: TemaResuelto
+  onCambiarTema: (preferencia: PreferenciaTema) => TemaResuelto
 }
 
 export function EncabezadoApp({
@@ -16,11 +20,13 @@ export function EncabezadoApp({
   chatAbierto,
   onAlternarChat,
   botonChatRef,
+  temaResuelto,
+  onCambiarTema,
 }: EncabezadoAppProps) {
   return (
-    <header className="sticky top-0 z-30 h-14 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
+    <header className="sticky top-0 z-30 h-14 border-b border-line bg-surface/95 text-ink shadow-sm backdrop-blur">
       <div className="mx-auto flex h-full max-w-[1440px] items-center gap-2 px-3 sm:gap-4 sm:px-4">
-        <h1 className="hidden truncate text-base font-semibold tracking-tight text-slate-800 sm:block">
+        <h1 className="hidden truncate text-base font-semibold tracking-tight text-ink sm:block">
           Editor con tutor
         </h1>
 
@@ -28,6 +34,11 @@ export function EncabezadoApp({
           <SelectorTipoDocumento
             valor={tipoDocumento}
             onCambiar={onCambiarTipo}
+          />
+
+          <ControlTema
+            temaResuelto={temaResuelto}
+            onCambiar={onCambiarTema}
           />
 
           <button
@@ -44,10 +55,10 @@ export function EncabezadoApp({
             }
             className={[
               'inline-flex h-9 items-center justify-center gap-2 rounded-md px-2.5 text-sm font-medium transition-colors',
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900',
+              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
               chatAbierto
-                ? 'bg-slate-900 text-white hover:bg-slate-800'
-                : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950',
+                ? 'bg-accent text-accent-ink hover:bg-accent-hover'
+                : 'text-muted hover:bg-surface-muted hover:text-ink',
             ].join(' ')}
           >
             <svg

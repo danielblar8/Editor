@@ -35,17 +35,17 @@ const TEXTO_GRAMATICA: Record<EstadoGramatica, string> = {
 }
 
 const PUNTO_GRAMATICA: Record<EstadoGramatica, string> = {
-  inactivo: 'bg-slate-300',
-  revisando: 'bg-amber-500',
-  listo: 'bg-emerald-500',
-  no_disponible: 'bg-red-500',
+  inactivo: 'bg-subtle',
+  revisando: 'bg-warning',
+  listo: 'bg-success',
+  no_disponible: 'bg-danger',
 }
 
 const COLOR_GRAMATICA: Record<EstadoGramatica, string> = {
-  inactivo: 'text-slate-500',
-  revisando: 'text-amber-700',
-  listo: 'text-emerald-700',
-  no_disponible: 'text-red-600',
+  inactivo: 'text-muted',
+  revisando: 'text-warning',
+  listo: 'text-success',
+  no_disponible: 'text-danger',
 }
 
 export function EditorTexto({
@@ -182,22 +182,22 @@ export function EditorTexto({
 
   return (
     <>
-      <header className="sticky top-14 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
+      <header className="sticky top-14 z-20 border-b border-line bg-surface/95 shadow-sm backdrop-blur">
         <BarraHerramientas editor={editor} />
       </header>
 
       <div className="px-3 py-6 sm:px-6 sm:py-10">
-        <article className="mx-auto flex min-h-[calc(100dvh-10rem)] w-full max-w-[816px] flex-col rounded-sm bg-white px-5 py-10 shadow-xl shadow-slate-900/10 ring-1 ring-slate-900/5 sm:px-14 sm:py-14 lg:px-20">
+        <article className="mx-auto flex min-h-[calc(100dvh-10rem)] w-full max-w-[816px] flex-col rounded-sm border border-sheet-border bg-sheet px-5 py-10 text-ink shadow-xl shadow-slate-900/10 ring-1 ring-line/20 dark:shadow-black/50 sm:px-14 sm:py-14 lg:px-20">
           <EditorContent editor={editor} className="flex-1" />
 
-          <footer className="mt-10 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-4 text-xs">
+          <footer className="mt-10 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 text-xs">
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
               <p
                 aria-live="polite"
                 className={
                   estadoGuardado === 'error'
-                    ? 'font-medium text-red-600'
-                    : 'text-slate-500'
+                    ? 'font-medium text-danger'
+                    : 'text-muted'
                 }
               >
                 {TEXTO_ESTADO[estadoGuardado]}
@@ -213,7 +213,7 @@ export function EditorTexto({
                 {TEXTO_GRAMATICA[estadoGramatica]}
               </p>
             </div>
-            <p className="font-medium text-slate-600 tabular-nums">
+            <p className="font-medium text-muted tabular-nums">
               {formatearPalabras(palabras)}
             </p>
           </footer>

@@ -1,4 +1,9 @@
 import type { JSONContent } from '@tiptap/core'
+import type { PreferenciaTema } from './tema'
+import {
+  esPreferenciaTema,
+  PREFERENCIA_TEMA_POR_DEFECTO,
+} from './tema'
 import type { TipoDocumentoId } from './tiposDocumento'
 import {
   esTipoDocumentoId,
@@ -7,6 +12,10 @@ import {
 
 const PREFIJO_CLAVES = 'editor-tutor-ia'
 const CLAVE_DOCUMENTO_ACTUAL = `${PREFIJO_CLAVES}:documento-actual`
+// La clave y los valores válidos también están duplicados en el script inline
+// de index.html para aplicar el tema antes de cargar React. Mantén ambos
+// sitios sincronizados.
+const CLAVE_PREFERENCIA_TEMA = `${PREFIJO_CLAVES}:tema`
 const VERSION_ACTUAL = 2
 const VERSION_SIN_TIPO_DOCUMENTO = 1
 
@@ -202,4 +211,34 @@ export async function guardarDocumento(
     JSON.stringify(documento),
   )
   localStorage.setItem(CLAVE_DOCUMENTO_ACTUAL, documento.id)
+}
+
+/**
+ * Lee la preferencia de tema. Es independiente del documento guardado y no
+ * cambia su formato. Si el almacenamiento falla o el valor no es válido, usa
+ * «sistema».
+ */
+export function cargarPreferenciaTema(): PreferenciaTema {
+  try {
+    const valor = localStorage.getItem(CLAVE_PREFERENCIA_TEMA)
+    return esPreferenciaTema(valor)
+      ? valor
+      : PREFERENCIA_TEMA_POR_DEFECTO
+  } catch {
+    return PREFERENCIA_TEMA_POR_DEFECTO
+  }
+}
+
+/**
+ * Guarda la preferencia de tema. Un fallo de almacenamiento no impide cambiar
+ * el tema durante la sesión; simplemente no se conserva al recargar.
+ */
+export function guardarPreferenciaTema(
+  preferencia: PreferenciaTema,
+): void {
+  try {
+    localStorage.setItem(CLAVE_PREFERENCIA_TEMA, preferencia)
+  } catch {
+    // El tema sigue funcionando en memoria durante esta sesión.
+  }
 }

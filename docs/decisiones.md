@@ -562,3 +562,76 @@ qué límites tiene.
   actuales son solo gramaticales; el resaltado de observaciones del tutor queda
   para la Fase 6.
 - Sin commit de cierre de fase: queda pendiente de revisión manual.
+
+## Modo oscuro (2026-10-28)
+
+### Alcance y persistencia
+
+- Se mantienen tres valores internos: `sistema`, `claro` y `oscuro`. `sistema`
+  solo se usa como valor inicial y respaldo; la interfaz alterna únicamente
+  entre `claro` y `oscuro`. La preferencia se guarda en la clave independiente
+  `editor-tutor-ia:tema` y nunca cambia el formato del documento.
+- `src/lib/storage.ts` expone `cargarPreferenciaTema` y
+  `guardarPreferenciaTema`. Un valor inválido o un fallo de localStorage se
+  traduce a `sistema`; un fallo al guardar no impide cambiar el tema durante la
+  sesión.
+- El script inline de `index.html` aplica el tema antes de cargar React para
+  evitar el destello claro. Solo acepta los tres valores válidos y usa
+  `try/catch`; la clave y los valores están duplicados deliberadamente con
+  `storage.ts`, y ambos archivos lo advierten en un comentario.
+- `data-theme` usa los valores en español (`claro` / `oscuro`), mientras que
+  `color-scheme` usa los valores CSS en inglés (`light` / `dark`). Por eso el
+  selector de `index.css` es `:root[data-theme='oscuro']` y la variante de
+  Tailwind también busca `oscuro`.
+- No hay sincronización entre pestañas: cada una resuelve el tema al cargar y
+  responde a sus propios cambios. Se decidió no añadir un listener de
+  `storage` para mantener el comportamiento simple.
+
+### Tokens y componentes
+
+- `src/index.css` define variables para ambos temas y las expone como tokens con
+  `@theme inline`. La variante `dark` se declara con
+  `@custom-variant dark (&:where([data-theme='oscuro'], [data-theme='oscuro'] *));`
+  sin añadir `tailwind.config.js`.
+- Los componentes usan tokens semánticos (`bg-surface`, `text-ink`,
+  `border-line`, `bg-chat-user`, etc.) en lugar de colores fijos. La hoja oscura
+  usa `#0f172a` y un borde de `1px #1e293b`.
+- El subrayado y el tooltip gramaticales leen `--grammar`, `--grammar-hover`,
+  `--tooltip` y `--tooltip-ink`. No se modificó
+  `src/extensions/GramaticaDecoraciones.ts` ni la lógica de LanguageTool.
+- `src/hooks/useTema.ts` mantiene la preferencia, aplica el tema con
+  `useLayoutEffect` y solo registra el listener de `prefers-color-scheme`
+  mientras la preferencia es `sistema`.
+- `src/components/ControlTema.tsx` usa un botón de 36 px con icono, sin etiqueta
+  visible «Tema». Muestra un sol cuando el tema resuelto es oscuro y una luna
+  cuando es claro; el SVG es inline y tiene `aria-hidden="true"`.
+- Al pulsar, el botón cambia al tema contrario del resuelto, guarda esa
+  preferencia explícita con `cambiarPreferencia` y convierte `sistema` en una
+  elección explícita en la primera pulsación. `aria-label` y `title` describen
+  la acción en español. El `role="status"` solo anuncia el cambio cuando el
+  usuario pulsa, nunca al montar.
+- El botón se colocó en la cabecera entre el selector de tipo de documento y el
+  botón del chat. Sin el antiguo selector de tema, el selector de tipo recupera
+  su ancho base de `11.5rem` y puede reducirse con `min-w-0` en pantallas
+  estrechas.
+
+### Verificación realizada
+
+- `npm run typecheck`, `npm run lint` y `npm run build` pasan sin errores.
+- Se comprobó en el CSS generado que aparece `:root[data-theme=oscuro]`, que la
+  variante usa `oscuro` y que no queda ninguna referencia a `data-theme=dark`.
+- Queda pendiente la revisión visual manual de la matriz completo/oscuro,
+  incluyendo la recarga sin destello, el cambio del tema del sistema, el
+  contraste del subrayado gramatical y el anuncio del `role="status"` al pulsar
+  el botón.
+
+### Límites conocidos
+
+- El botón solo alterna entre claro y oscuro; no se puede volver a `sistema`
+  desde la interfaz, aunque sigue siendo el valor inicial y de respaldo.
+- No hay atajo de teclado específico para cambiar el tema; se usa el botón de la
+  cabecera.
+- No se sincroniza el tema entre pestañas abiertas.
+- La preferencia se guarda en localStorage: si el navegador la bloquea, el tema
+  funciona solo durante la sesión.
+- Sin commit de cierre: los cambios quedan pendientes de revisión manual.

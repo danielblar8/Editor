@@ -5,6 +5,7 @@ import { DialogoTipoDocumento } from './components/DialogoTipoDocumento'
 import { EditorTexto } from './components/EditorTexto'
 import { EncabezadoApp } from './components/EncabezadoApp'
 import { useChatTutor } from './hooks/useChatTutor'
+import { useTema } from './hooks/useTema'
 import { extraerParrafos, unirParrafos } from './lib/parrafos'
 import type { DocumentoGuardado } from './lib/storage'
 import { cargarDocumento } from './lib/storage'
@@ -37,6 +38,7 @@ function App() {
   }, [])
 
   const chat = useChatTutor(tipoDocumento, obtenerTexto)
+  const tema = useTema()
 
   useEffect(() => {
     let activo = true
@@ -83,10 +85,10 @@ function App() {
 
   if (error) {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-slate-200 px-6">
+      <main className="flex min-h-dvh items-center justify-center bg-canvas px-6">
         <p
           role="alert"
-          className="max-w-md rounded-lg bg-white p-6 text-center text-sm text-red-700 shadow-lg"
+          className="max-w-md rounded-lg border border-line bg-surface p-6 text-center text-sm text-danger shadow-lg"
         >
           {error}
         </p>
@@ -96,8 +98,8 @@ function App() {
 
   if (!documento) {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-slate-200 px-6">
-        <p aria-live="polite" className="text-sm text-slate-600">
+      <main className="flex min-h-dvh items-center justify-center bg-canvas px-6">
+        <p aria-live="polite" className="text-sm text-muted">
           Cargando documento…
         </p>
       </main>
@@ -105,13 +107,15 @@ function App() {
   }
 
   return (
-    <div className="min-h-dvh bg-slate-200/80">
+    <div className="min-h-dvh bg-canvas">
       <EncabezadoApp
         tipoDocumento={tipoDocumento}
         onCambiarTipo={setTipoDocumento}
         chatAbierto={chatAbierto}
         onAlternarChat={alternarChat}
         botonChatRef={botonChatRef}
+        temaResuelto={tema.temaResuelto}
+        onCambiarTema={tema.cambiarPreferencia}
       />
 
       <div className="flex">

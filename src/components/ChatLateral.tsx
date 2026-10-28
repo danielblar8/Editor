@@ -137,7 +137,7 @@ export function ChatLateral({
           tabIndex={-1}
           aria-label="Cerrar chat"
           onClick={onCerrar}
-          className="fixed inset-0 z-40 h-full w-full cursor-default bg-slate-900/40"
+          className="fixed inset-0 z-40 h-full w-full cursor-default bg-overlay"
         />
       )}
 
@@ -149,14 +149,14 @@ export function ChatLateral({
         aria-label="Chat del tutor"
         className={
           esMovil
-            ? 'fixed inset-y-0 right-0 z-50 flex w-[min(24rem,100vw)] flex-col bg-white shadow-2xl'
-            : 'flex w-full shrink-0 flex-col border-t border-slate-200 bg-white lg:sticky lg:top-14 lg:h-[calc(100dvh-3.5rem)] lg:w-[22rem] lg:border-t-0 lg:border-l xl:w-[24rem]'
+            ? 'fixed inset-y-0 right-0 z-50 flex w-[min(24rem,100vw)] flex-col bg-surface text-ink shadow-2xl'
+            : 'flex w-full shrink-0 flex-col border-t border-line bg-surface text-ink lg:sticky lg:top-14 lg:h-[calc(100dvh-3.5rem)] lg:w-[22rem] lg:border-t-0 lg:border-l xl:w-[24rem]'
         }
       >
-        <header className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+        <header className="flex items-start justify-between gap-3 border-b border-line px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900">Tutor</h2>
-            <p className="text-xs text-slate-500">
+            <h2 className="text-sm font-semibold text-ink">Tutor</h2>
+            <p className="text-xs text-muted">
               Revisión con IA · no modifica tu texto
             </p>
           </div>
@@ -165,7 +165,7 @@ export function ChatLateral({
             type="button"
             onClick={onCerrar}
             aria-label="Cerrar chat del tutor"
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
           >
             <svg
               viewBox="0 0 24 24"
@@ -195,7 +195,7 @@ export function ChatLateral({
               return (
                 <p
                   key={mensaje.id}
-                  className="rounded-lg border border-dashed border-amber-300 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900"
+                  className="rounded-lg border border-dashed border-warning/40 bg-warning/10 px-3 py-2 text-xs leading-relaxed text-warning"
                 >
                   {mensaje.texto}
                 </p>
@@ -215,19 +215,19 @@ export function ChatLateral({
                   key={mensaje.id}
                   className="flex justify-start"
                 >
-                  <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm leading-relaxed text-slate-800">
+                  <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-line bg-observation px-3.5 py-3 text-sm leading-relaxed text-ink">
                     <p className="sr-only">Tutor:</p>
                     <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-                      <span className="rounded-full bg-slate-900 px-2 py-0.5 text-[0.65rem] font-semibold tracking-wide text-white uppercase">
+                      <span className="rounded-full bg-accent px-2 py-0.5 text-[0.65rem] font-semibold tracking-wide text-accent-ink uppercase">
                         Párrafo {parrafo_id}
                       </span>
-                      <span className="text-xs font-medium text-slate-600">
+                      <span className="text-xs font-medium text-muted">
                         {ETIQUETAS_TIPO_PROBLEMA[tipo_problema]}
                       </span>
                     </div>
                     <p>{observacion}</p>
-                    <p className="mt-2 border-t border-slate-200 pt-2 text-xs leading-relaxed text-slate-600">
-                      <span className="font-semibold text-slate-700">
+                    <p className="mt-2 border-t border-observation-line pt-2 text-xs leading-relaxed text-muted">
+                      <span className="font-semibold text-ink">
                         Pregunta guía:{' '}
                       </span>
                       {pregunta_guia}
@@ -248,8 +248,8 @@ export function ChatLateral({
                   className={[
                     'max-w-[85%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed',
                     esUsuario
-                      ? 'rounded-br-md bg-slate-900 text-white'
-                      : 'rounded-bl-md bg-slate-100 text-slate-800',
+                      ? 'rounded-br-md bg-chat-user text-chat-user-ink'
+                      : 'rounded-bl-md bg-chat-tutor text-chat-tutor-ink',
                   ].join(' ')}
                 >
                   <p className="sr-only">{esUsuario ? 'Tú:' : 'Tutor:'}</p>
@@ -263,7 +263,7 @@ export function ChatLateral({
             <div className="flex justify-start">
               <p
                 role="status"
-                className="rounded-2xl rounded-bl-md bg-slate-100 px-3.5 py-2.5 text-sm text-slate-500"
+                className="rounded-2xl rounded-bl-md bg-chat-tutor px-3.5 py-2.5 text-sm text-muted"
               >
                 El tutor está revisando…
               </p>
@@ -271,7 +271,7 @@ export function ChatLateral({
           )}
         </div>
 
-        <div className="border-t border-slate-200 px-4 py-3">
+        <div className="border-t border-line px-4 py-3">
           <div className="mb-2 flex flex-wrap gap-1.5">
             {SUGERENCIAS.map((sugerencia) => (
               <button
@@ -279,7 +279,7 @@ export function ChatLateral({
                 type="button"
                 disabled={enviando}
                 onClick={() => enviarSugerencia(sugerencia)}
-                className="rounded-full border border-slate-300 px-2.5 py-1 text-xs text-slate-600 transition-colors hover:border-slate-400 hover:bg-slate-50 hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:pointer-events-none disabled:opacity-50"
+                className="rounded-full border border-line px-2.5 py-1 text-xs text-muted transition-colors hover:border-subtle hover:bg-surface-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:pointer-events-none disabled:opacity-50"
               >
                 {sugerencia}
               </button>
@@ -298,14 +298,14 @@ export function ChatLateral({
               onChange={(evento) => setTexto(evento.target.value)}
               onKeyDown={alPulsarEnCampo}
               placeholder="Escribe tu mensaje…"
-              className="max-h-40 min-h-11 flex-1 resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus-visible:border-slate-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+              className="max-h-40 min-h-11 flex-1 resize-none rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-subtle focus-visible:border-focus focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             />
             <button
               type="button"
               onClick={enviarTexto}
               disabled={!texto.trim() || enviando}
               aria-label="Enviar mensaje"
-              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white transition-colors hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 disabled:pointer-events-none disabled:opacity-40"
+              className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-ink transition-colors hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:pointer-events-none disabled:opacity-40"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -323,7 +323,7 @@ export function ChatLateral({
             </button>
           </div>
 
-          <p className="mt-1.5 text-[0.7rem] text-slate-400">
+          <p className="mt-1.5 text-[0.7rem] text-subtle">
             Enter envía · Mayús+Enter salta de línea
           </p>
         </div>

@@ -35,11 +35,11 @@ function BotonBarra({
       onClick={onClick}
       className={[
         'inline-flex h-9 min-w-9 items-center justify-center rounded-md px-2 text-sm transition-colors',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus',
         'disabled:pointer-events-none disabled:opacity-40',
         activo
-          ? 'bg-slate-900 text-white shadow-sm'
-          : 'text-slate-700 hover:bg-slate-100 hover:text-slate-950',
+          ? 'bg-accent text-accent-ink shadow-sm'
+          : 'text-muted hover:bg-surface-muted hover:text-ink',
       ].join(' ')}
     >
       {children}
@@ -50,7 +50,7 @@ function BotonBarra({
 function Separador() {
   return (
     <span
-      className="mx-0.5 hidden h-6 w-px bg-slate-200 sm:block"
+      className="mx-0.5 hidden h-6 w-px bg-line sm:block"
       aria-hidden="true"
     />
   )

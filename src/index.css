@@ -1,15 +1,123 @@
 @import 'tailwindcss';
 
+/* data-theme usa los valores en español «claro»/«oscuro». */
+@custom-variant dark (&:where([data-theme='oscuro'], [data-theme='oscuro'] *));
+
+:root {
+  color-scheme: light;
+
+  --canvas: #e2e8f0;
+  --sheet: #ffffff;
+  --sheet-border: transparent;
+  --ink: #0f172a;
+  --muted: #475569;
+  --subtle: #64748b;
+  --surface: #ffffff;
+  --surface-muted: #f1f5f9;
+  --line: #cbd5e1;
+  --focus: #0369a1;
+  --accent: #0f172a;
+  --accent-hover: #1e293b;
+  --accent-ink: #ffffff;
+  --grammar: #d97706;
+  --grammar-hover: #fffbeb;
+  --tooltip: #0f172a;
+  --tooltip-ink: #f8fafc;
+  --selection: #bae6fd;
+  --selection-ink: #0f172a;
+  --overlay: rgb(15 23 42 / 0.4);
+  --chat-user: #0f172a;
+  --chat-user-ink: #ffffff;
+  --chat-tutor: #f1f5f9;
+  --chat-tutor-ink: #0f172a;
+  --observation: #f8fafc;
+  --observation-line: #e2e8f0;
+  --success: #047857;
+  --warning: #b45309;
+  --danger: #dc2626;
+}
+
+:root[data-theme='oscuro'] {
+  color-scheme: dark;
+
+  --canvas: #020617;
+  --sheet: #0f172a;
+  --sheet-border: #1e293b;
+  --ink: #f8fafc;
+  --muted: #cbd5e1;
+  --subtle: #94a3b8;
+  --surface: #0f172a;
+  --surface-muted: #1e293b;
+  --line: #334155;
+  --focus: #7dd3fc;
+  --accent: #e2e8f0;
+  --accent-hover: #cbd5e1;
+  --accent-ink: #0f172a;
+  --grammar: #fbbf24;
+  --grammar-hover: #78350f;
+  --tooltip: #f8fafc;
+  --tooltip-ink: #0f172a;
+  --selection: #1d4ed8;
+  --selection-ink: #ffffff;
+  --overlay: rgb(0 0 0 / 0.6);
+  --chat-user: #1d4ed8;
+  --chat-user-ink: #ffffff;
+  --chat-tutor: #1e293b;
+  --chat-tutor-ink: #e2e8f0;
+  --observation: #1e293b;
+  --observation-line: #334155;
+  --success: #6ee7b7;
+  --warning: #fcd34d;
+  --danger: #f87171;
+}
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-sheet: var(--sheet);
+  --color-sheet-border: var(--sheet-border);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-subtle: var(--subtle);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-line: var(--line);
+  --color-focus: var(--focus);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-ink: var(--accent-ink);
+  --color-grammar: var(--grammar);
+  --color-grammar-hover: var(--grammar-hover);
+  --color-tooltip: var(--tooltip);
+  --color-tooltip-ink: var(--tooltip-ink);
+  --color-selection: var(--selection);
+  --color-selection-ink: var(--selection-ink);
+  --color-overlay: var(--overlay);
+  --color-chat-user: var(--chat-user);
+  --color-chat-user-ink: var(--chat-user-ink);
+  --color-chat-tutor: var(--chat-tutor);
+  --color-chat-tutor-ink: var(--chat-tutor-ink);
+  --color-observation: var(--observation);
+  --color-observation-line: var(--observation-line);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+}
+
+html {
+  @apply bg-canvas;
+}
+
 body {
-  @apply bg-slate-200 text-slate-900;
+  @apply bg-canvas text-ink;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* Contenido de la hoja. Los estilos viven aquí, acotados a .contenido-editor,
-   para que no afecten a la interfaz. Se defines con utilidades de Tailwind. */
+   para que no afecten a la interfaz. Se definen con utilidades de Tailwind. */
 .contenido-editor {
-  @apply min-h-[60vh] font-serif text-[1.0625rem] leading-8 text-slate-900 caret-slate-900 outline-none;
+  @apply min-h-[60vh] font-serif text-[1.0625rem] leading-8 text-ink outline-none;
+  caret-color: var(--ink);
 }
 
 .contenido-editor > :first-child {
@@ -25,23 +133,23 @@ body {
 }
 
 .contenido-editor h1 {
-  @apply mt-8 mb-4 text-3xl leading-tight font-bold tracking-tight text-slate-950;
+  @apply mt-8 mb-4 text-3xl leading-tight font-bold tracking-tight text-ink;
 }
 
 .contenido-editor h2 {
-  @apply mt-7 mb-3 text-2xl leading-snug font-bold tracking-tight text-slate-950;
+  @apply mt-7 mb-3 text-2xl leading-snug font-bold tracking-tight text-ink;
 }
 
 .contenido-editor h3 {
-  @apply mt-6 mb-2 text-xl leading-snug font-semibold text-slate-950;
+  @apply mt-6 mb-2 text-xl leading-snug font-semibold text-ink;
 }
 
 .contenido-editor ul {
-  @apply my-3 list-disc space-y-1 pl-7 marker:text-slate-500;
+  @apply my-3 list-disc space-y-1 pl-7 marker:text-subtle;
 }
 
 .contenido-editor ol {
-  @apply my-3 list-decimal space-y-1 pl-7 marker:text-slate-500;
+  @apply my-3 list-decimal space-y-1 pl-7 marker:text-subtle;
 }
 
 .contenido-editor li {
@@ -70,48 +178,51 @@ body {
 }
 
 .contenido-editor blockquote {
-  @apply my-4 border-l-4 border-slate-200 pl-4 text-slate-600 italic;
+  @apply my-4 border-l-4 border-line pl-4 text-muted italic;
 }
 
 .contenido-editor code {
-  @apply rounded bg-slate-100 px-1 py-0.5 font-mono text-sm;
+  @apply rounded border border-line bg-surface-muted px-1 py-0.5 font-mono text-sm text-ink;
 }
 
 .contenido-editor pre {
-  @apply my-4 overflow-x-auto rounded-lg bg-slate-900 p-4 font-mono text-sm text-slate-100;
+  @apply my-4 overflow-x-auto rounded-lg border border-line bg-surface-muted p-4 font-mono text-sm text-ink;
 }
 
 .contenido-editor pre code {
-  @apply bg-transparent p-0 text-inherit;
+  @apply border-0 bg-transparent p-0 text-inherit;
 }
 
 .contenido-editor hr {
-  @apply my-8 border-slate-200;
+  @apply my-8 border-line;
 }
 
 .contenido-editor a {
-  @apply text-sky-700 underline underline-offset-2;
+  @apply text-focus underline underline-offset-2;
 }
 
-.contenido-editor ::selection {
-  @apply bg-sky-200/70;
+::selection {
+  background-color: var(--selection);
+  color: var(--selection-ink);
 }
 
 .contenido-editor .error-gramatica {
   @apply relative cursor-help rounded-sm;
   text-decoration-line: underline;
   text-decoration-style: wavy;
-  text-decoration-color: var(--color-amber-500);
+  text-decoration-color: var(--grammar);
   text-decoration-thickness: 1.5px;
   text-underline-offset: 3px;
   text-decoration-skip-ink: none;
 }
 
 .contenido-editor .error-gramatica:hover {
-  @apply bg-amber-50;
+  background-color: var(--grammar-hover);
 }
 
 .contenido-editor .error-gramatica[data-mensaje]:hover::after {
-  @apply pointer-events-none absolute bottom-[calc(100%+0.5rem)] left-0 z-30 w-max max-w-[min(22rem,65vw)] rounded-lg bg-slate-900 px-2.5 py-2 font-sans text-xs leading-snug font-medium whitespace-normal text-white shadow-lg;
+  @apply pointer-events-none absolute bottom-[calc(100%+0.5rem)] left-0 z-30 w-max max-w-[min(22rem,65vw)] rounded-lg px-2.5 py-2 font-sans text-xs leading-snug font-medium whitespace-normal shadow-lg;
+  background-color: var(--tooltip);
+  color: var(--tooltip-ink);
   content: attr(data-mensaje);
 }
