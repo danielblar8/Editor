@@ -1,0 +1,98 @@
+@import 'tailwindcss';
+
+body {
+  @apply bg-slate-200 text-slate-900;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Contenido de la hoja. Los estilos viven aquí, acotados a .contenido-editor,
+   para que no afecten a la interfaz. Se defines con utilidades de Tailwind. */
+.contenido-editor {
+  @apply min-h-[60vh] font-serif text-[1.0625rem] leading-8 text-slate-900 caret-slate-900 outline-none;
+}
+
+.contenido-editor > :first-child {
+  @apply mt-0;
+}
+
+.contenido-editor > :last-child {
+  @apply mb-0;
+}
+
+.contenido-editor p {
+  @apply my-3;
+}
+
+.contenido-editor h1 {
+  @apply mt-8 mb-4 text-3xl leading-tight font-bold tracking-tight text-slate-950;
+}
+
+.contenido-editor h2 {
+  @apply mt-7 mb-3 text-2xl leading-snug font-bold tracking-tight text-slate-950;
+}
+
+.contenido-editor h3 {
+  @apply mt-6 mb-2 text-xl leading-snug font-semibold text-slate-950;
+}
+
+.contenido-editor ul {
+  @apply my-3 list-disc space-y-1 pl-7 marker:text-slate-500;
+}
+
+.contenido-editor ol {
+  @apply my-3 list-decimal space-y-1 pl-7 marker:text-slate-500;
+}
+
+.contenido-editor li {
+  @apply pl-1;
+}
+
+.contenido-editor li > p {
+  @apply my-0;
+}
+
+.contenido-editor li > ul,
+.contenido-editor li > ol {
+  @apply my-1;
+}
+
+.contenido-editor strong {
+  @apply font-bold;
+}
+
+.contenido-editor em {
+  @apply italic;
+}
+
+.contenido-editor u {
+  @apply underline underline-offset-2;
+}
+
+.contenido-editor blockquote {
+  @apply my-4 border-l-4 border-slate-200 pl-4 text-slate-600 italic;
+}
+
+.contenido-editor code {
+  @apply rounded bg-slate-100 px-1 py-0.5 font-mono text-sm;
+}
+
+.contenido-editor pre {
+  @apply my-4 overflow-x-auto rounded-lg bg-slate-900 p-4 font-mono text-sm text-slate-100;
+}
+
+.contenido-editor pre code {
+  @apply bg-transparent p-0 text-inherit;
+}
+
+.contenido-editor hr {
+  @apply my-8 border-slate-200;
+}
+
+.contenido-editor a {
+  @apply text-sky-700 underline underline-offset-2;
+}
+
+.contenido-editor ::selection {
+  @apply bg-sky-200/70;
+}
