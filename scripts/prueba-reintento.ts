@@ -4,8 +4,11 @@ import { NoObjectGeneratedError, TypeValidationError } from 'ai'
 import { ejecutarConTraduccion } from '../server/gemini.ts'
 import { ejecutarConReintento } from '../server/reintento.ts'
 
-function errorCodigo(codigo: string): Error & { codigo: string } {
-  return Object.assign(new Error(codigo), { codigo })
+function errorCodigo(
+  codigo: string,
+  estado?: number,
+): Error & { codigo: string; estado?: number } {
+  return Object.assign(new Error(codigo), { codigo, estado })
 }
 
 test('reintenta una respuesta inválida y devuelve el valor correcto', async () => {
@@ -132,4 +135,120 @@ test('un error de objeto no generado del SDK también activa el reintento', asyn
 
   assert.equal(intentos, 2)
   assert.equal(resultado.valor, 'corregido')
+})
+
+test('reintenta un 503 y pasa el error previo a la segunda llamada', async () => {
+  let intentos = 0
+  const erroresPrevios: unknown[] = []
+
+  const resultado = await ejecutarConReintento({
+    esperaMs: 0,
+    llamada: async (intentosPrevios, errorPrevio) => {
+      intentos += 1
+      erroresPrevios.push(errorPrevio)
+      if (intentosPrevios === 0) {
+        throw errorCodigo('servicio_no_disponible', 503)
+      }
+      return 'recuperado'
+    },
+  })
+
+  assert.equal(intentos, 2)
+  assert.equal(resultado.intentos, 2)
+  assert.equal(resultado.valor, 'recuperado')
+  assert.equal(erroresPrevios[0], undefined)
+  const errorPrevio = erroresPrevios[1] as { codigo?: unknown; estado?: unknown }
+  assert.equal(errorPrevio.codigo, 'servicio_no_disponible')
+  assert.equal(errorPrevio.estado, 503)
+})
+
+test('agota el reintento cuando los dos intentos devuelven 503', async () => {
+  let intentos = 0
+
+  await assert.rejects(
+    ejecutarConReintento({
+      esperaMs: 0,
+      llamada: () => {
+        intentos += 1
+        throw errorCodigo('servicio_no_disponible', 503)
+      },
+    }),
+    /servicio_no_disponible/,
+  )
+
+  assert.equal(intentos, 2)
+})
+
+test('no reintenta una cuota que aparece después de un 503', async () => {
+  let intentos = 0
+
+  await assert.rejects(
+    ejecutarConReintento({
+      esperaMs: 0,
+      llamada: (intentosPrevios) => {
+        intentos += 1
+        if (intentosPrevios === 0) {
+          throw errorCodigo('servicio_no_disponible', 503)
+        }
+        throw errorCodigo('cuota_agotada')
+      },
+    }),
+    /cuota_agotada/,
+  )
+
+  assert.equal(intentos, 2)
+})
+
+test('no reintenta un error de configuración', async () => {
+  let intentos = 0
+
+  await assert.rejects(
+    ejecutarConReintento({
+      esperaMs: 0,
+      llamada: () => {
+        intentos += 1
+        throw errorCodigo('configuracion')
+      },
+    }),
+    /configuracion/,
+  )
+
+  assert.equal(intentos, 1)
+})
+
+test('no reintenta un 5xx que no es 503', async () => {
+  let intentos = 0
+
+  await assert.rejects(
+    ejecutarConReintento({
+      esperaMs: 0,
+      llamada: () => {
+        intentos += 1
+        throw errorCodigo('servicio_no_disponible', 500)
+      },
+    }),
+    /servicio_no_disponible/,
+  )
+
+  assert.equal(intentos, 1)
+})
+
+test('no reintenta si el plazo global ya se agotó', async () => {
+  let intentos = 0
+  const controlador = new AbortController()
+  controlador.abort()
+
+  await assert.rejects(
+    ejecutarConReintento({
+      esperaMs: 0,
+      senalAborto: controlador.signal,
+      llamada: () => {
+        intentos += 1
+        throw errorCodigo('servicio_no_disponible', 503)
+      },
+    }),
+    /servicio_no_disponible/,
+  )
+
+  assert.equal(intentos, 1)
 })

@@ -28,11 +28,15 @@ import { construirPromptMapa, construirPromptRevision } from './prompts.ts'
 import type { MetricasDocumento } from './metricas.ts'
 import { calcularMetricas } from './metricas.ts'
 import { idsCriterios } from './rubricas/indice.ts'
-import { ejecutarConReintento } from './reintento.ts'
+import {
+  ejecutarConReintento,
+  esServicioNoDisponible503,
+} from './reintento.ts'
 import {
   CRITERIO_ESTRUCTURA_BASE,
   CRITERIO_ESTRUCTURA_DESARROLLO,
   CRITERIO_ESTRUCTURA_INCOMPLETO,
+  ESPERA_REINTENTO_503_MS,
   LIMITE_CARACTERES_SECCION_PROMPT,
   MAX_LLAMADAS_POR_REVISION,
   REINTENTOS_POR_LLAMADA,
@@ -216,6 +220,11 @@ function leerVariable(nombre: string): string {
     )
   }
   return valor
+}
+
+function leerVariableOpcional(nombre: string): string | undefined {
+  const valor = process.env[nombre]?.trim()
+  return valor || undefined
 }
 
 export function dividirParrafos(texto: string): string[] {
@@ -493,6 +502,7 @@ export async function revisarConGemini({
 
   const apiKey = leerVariable('GEMINI_API_KEY')
   const modelo = leerVariable('GEMINI_MODEL')
+  const modeloRespaldo = leerVariableOpcional('GEMINI_MODEL_RESPALDO')
   const dosLlamadas = texto.length > LIMITE_CARACTERES_SECCION_PROMPT
   const proveedor = createGoogleGenerativeAI({ apiKey })
   const controlador = new AbortController()
@@ -526,6 +536,21 @@ export async function revisarConGemini({
       ? `\n\nNOTA DE CORRECCIÓN: Tu respuesta anterior no cumplió el formato de ${destino}. Devuelve solo la salida solicitada, sin repetir el texto del autor.`
       : ''
 
+  const modeloParaIntento = (
+    intentosPrevios: number,
+    errorPrevio?: unknown,
+  ): string => {
+    if (
+      intentosPrevios > 0 &&
+      esServicioNoDisponible503(errorPrevio) &&
+      modeloRespaldo
+    ) {
+      console.log('[revisar] Reintento tras 503 con modelo de respaldo.')
+      return modeloRespaldo
+    }
+    return modelo
+  }
+
   console.log(
     `[revisar] Inicio modelo=${modelo} tipo=${tipoDocumento} seccion=${seccion} parrafos=${parrafos.length} caracteres=${texto.length} llamadas=${dosLlamadas ? 2 : 1}`,
   )
@@ -540,12 +565,14 @@ export async function revisarConGemini({
       const mapaReintentado = await ejecutarConReintento({
         maxIntentos: REINTENTOS_POR_LLAMADA + 1,
         puedeReintentar: () => llamadas < MAX_LLAMADAS_POR_REVISION,
-        llamada: async (intentosPrevios) => {
+        esperaMs: ESPERA_REINTENTO_503_MS,
+        senalAborto: controlador.signal,
+        llamada: async (intentosPrevios, errorPrevio) => {
           registrarLlamada()
           const { system, prompt } = construirPromptMapa({ parrafos })
           const respuesta = await ejecutarConTraduccion(() =>
             generateText({
-              model: proveedor(modelo),
+              model: proveedor(modeloParaIntento(intentosPrevios, errorPrevio)),
               system,
               prompt: `${prompt}${notaCorreccion(intentosPrevios, 'mapa')}`,
               output: Output.object({
@@ -622,11 +649,13 @@ export async function revisarConGemini({
       const revisionReintentada = await ejecutarConReintento({
         maxIntentos: REINTENTOS_POR_LLAMADA + 1,
         puedeReintentar: () => llamadas < MAX_LLAMADAS_POR_REVISION,
-        llamada: async (intentosPrevios) => {
+        esperaMs: ESPERA_REINTENTO_503_MS,
+        senalAborto: controlador.signal,
+        llamada: async (intentosPrevios, errorPrevio) => {
           registrarLlamada()
           const respuesta = await ejecutarConTraduccion(() =>
             generateText({
-              model: proveedor(modelo),
+              model: proveedor(modeloParaIntento(intentosPrevios, errorPrevio)),
               system,
               prompt: `${prompt}${notaCorreccion(intentosPrevios, 'observaciones')}`,
               output: Output.object({
@@ -674,11 +703,13 @@ export async function revisarConGemini({
       const revisionReintentada = await ejecutarConReintento({
         maxIntentos: REINTENTOS_POR_LLAMADA + 1,
         puedeReintentar: () => llamadas < MAX_LLAMADAS_POR_REVISION,
-        llamada: async (intentosPrevios) => {
+        esperaMs: ESPERA_REINTENTO_503_MS,
+        senalAborto: controlador.signal,
+        llamada: async (intentosPrevios, errorPrevio) => {
           registrarLlamada()
           const respuesta = await ejecutarConTraduccion(() =>
             generateText({
-              model: proveedor(modelo),
+              model: proveedor(modeloParaIntento(intentosPrevios, errorPrevio)),
               system,
               prompt: `${prompt}${notaCorreccion(intentosPrevios, 'revisión')}`,
               output: Output.object({
