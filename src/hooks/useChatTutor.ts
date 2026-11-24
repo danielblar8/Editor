@@ -14,16 +14,22 @@ import {
 import { LIMITE_CARACTERES_TEXTO } from '../lib/revisionTipos'
 import type { TipoDocumentoId } from '../lib/tiposDocumento'
 
+export type DocumentoParaRevision = {
+  texto: string
+  /** Foto de IDs de los bloques en el mismo orden en que se envió el texto. */
+  idsParrafos: (string | null)[]
+}
+
 /**
  * Estado del chat del tutor.
  *
  * El historial vive solo en memoria: no se guarda en localStorage. El texto
- * del documento se obtiene en el momento de enviar con `obtenerTexto`, de modo
+ * del documento y la foto de IDs se obtienen en el momento de enviar, de modo
  * que el hook nunca escribe en el editor.
  */
 export function useChatTutor(
   tipoDocumento: TipoDocumentoId,
-  obtenerTexto: () => string,
+  obtenerDocumento: () => DocumentoParaRevision,
 ) {
   const [mensajes, setMensajes] = useState<MensajeChat[]>(() => [
     crearMensajeBienvenida(tipoDocumento),
@@ -63,7 +69,8 @@ export function useChatTutor(
       ])
 
       try {
-        const documento = obtenerTexto().trim()
+        const { texto, idsParrafos } = obtenerDocumento()
+        const documento = texto.trim()
 
         if (!documento) {
           setMensajes((anteriores) => [
@@ -92,6 +99,7 @@ export function useChatTutor(
           ...crearMensajesRevision(
             respuesta.seccion,
             respuesta.observaciones,
+            idsParrafos,
           ),
         ])
       } catch (error) {
@@ -109,7 +117,7 @@ export function useChatTutor(
         setEnviando(false)
       }
     },
-    [obtenerTexto, tipoDocumento],
+    [obtenerDocumento, tipoDocumento],
   )
 
   return { mensajes, enviando, enviar }

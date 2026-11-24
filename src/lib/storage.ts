@@ -1,4 +1,5 @@
 import type { JSONContent } from '@tiptap/core'
+import { asegurarIdsContenido } from './parrafosIds'
 import type { PreferenciaTema } from './tema'
 import {
   esPreferenciaTema,
@@ -16,15 +17,17 @@ const CLAVE_DOCUMENTO_ACTUAL = `${PREFIJO_CLAVES}:documento-actual`
 // de index.html para aplicar el tema antes de cargar React. Mantén ambos
 // sitios sincronizados.
 const CLAVE_PREFERENCIA_TEMA = `${PREFIJO_CLAVES}:tema`
-const VERSION_ACTUAL = 2
+const VERSION_ACTUAL = 3
 const VERSION_SIN_TIPO_DOCUMENTO = 1
+const VERSION_SIN_IDS = 2
 
 /**
  * Documento persistido. El contenido es siempre JSON de TipTap, nunca HTML ni
  * texto plano.
  *
- * La versión 2 añade `tipoDocumento`. Los documentos de la versión 1 (Fase 1)
- * se migran al cargarlos, sin perder contenido.
+ * La versión 2 añadió `tipoDocumento`; la versión 3 añade un `parrafoId`
+ * estable a cada bloque del contenido. Los documentos de las versiones 1 y 2
+ * se migran al cargarlos, sin perder contenido ni cambiar el texto visible.
  */
 export type DocumentoGuardado = {
   id: string
@@ -85,51 +88,56 @@ function esDocumentoBase(valor: unknown): valor is DocumentoCrudo {
  *
  * - Versión 1: se añade `tipoDocumento` con el valor por defecto.
  * - Versión 2: se respeta el tipo si es conocido; si no, se usa el defecto.
+ * - Todas las versiones reciben IDs de párrafo estables al pasar a la 3. Un ID
+ *   repetido se reemplaza por uno nuevo para mantener la unicidad.
  * - Cualquier otra versión se descarta.
+ *
+ * Exportada para las pruebas unitarias; el resto de la app usa
+ * `cargarDocumento` y `guardarDocumento`.
  */
-function migrarDocumento(valor: unknown): DocumentoLeido | null {
+export function migrarDocumento(valor: unknown): DocumentoLeido | null {
   if (!esDocumentoBase(valor)) return null
 
-  if (valor.version === VERSION_SIN_TIPO_DOCUMENTO) {
-    return {
-      documento: {
-        id: valor.id,
-        version: VERSION_ACTUAL,
-        tipoDocumento: TIPO_DOCUMENTO_POR_DEFECTO,
-        contenido: valor.contenido,
-        actualizadoEn: valor.actualizadoEn,
-      },
-      requiereGuardado: true,
-    }
+  if (
+    valor.version !== VERSION_SIN_TIPO_DOCUMENTO &&
+    valor.version !== VERSION_SIN_IDS &&
+    valor.version !== VERSION_ACTUAL
+  ) {
+    return null
   }
 
-  if (valor.version !== VERSION_ACTUAL) return null
-
+  const tipoValido = esTipoDocumentoId(valor.tipoDocumento)
   const tipoDocumento = esTipoDocumentoId(valor.tipoDocumento)
     ? valor.tipoDocumento
     : TIPO_DOCUMENTO_POR_DEFECTO
+  const { contenido, cambiado: idsCambiados } = asegurarIdsContenido(
+    valor.contenido,
+  )
 
   return {
     documento: {
       id: valor.id,
       version: VERSION_ACTUAL,
       tipoDocumento,
-      contenido: valor.contenido,
+      contenido,
       actualizadoEn: valor.actualizadoEn,
     },
-    requiereGuardado: !esTipoDocumentoId(valor.tipoDocumento),
+    requiereGuardado:
+      valor.version !== VERSION_ACTUAL || !tipoValido || idsCambiados,
   }
 }
 
 function crearDocumentoVacio(id: string): DocumentoGuardado {
+  const { contenido } = asegurarIdsContenido({
+    type: 'doc',
+    content: [{ type: 'paragraph' }],
+  })
+
   return {
     id,
     version: VERSION_ACTUAL,
     tipoDocumento: TIPO_DOCUMENTO_POR_DEFECTO,
-    contenido: {
-      type: 'doc',
-      content: [{ type: 'paragraph' }],
-    },
+    contenido,
     actualizadoEn: new Date().toISOString(),
   }
 }

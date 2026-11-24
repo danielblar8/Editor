@@ -1,12 +1,13 @@
 import type { Editor } from '@tiptap/core'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChatLateral } from './components/ChatLateral'
 import { DialogoTipoDocumento } from './components/DialogoTipoDocumento'
 import { EditorTexto } from './components/EditorTexto'
 import { EncabezadoApp } from './components/EncabezadoApp'
 import { useChatTutor } from './hooks/useChatTutor'
 import { useTema } from './hooks/useTema'
-import { extraerParrafos, unirParrafos } from './lib/parrafos'
+import { construirResaltados } from './lib/observaciones'
+import { extraerParrafosConId, unirParrafos } from './lib/parrafos'
 import type { DocumentoGuardado } from './lib/storage'
 import { cargarDocumento } from './lib/storage'
 import type { TipoDocumentoId } from './lib/tiposDocumento'
@@ -26,19 +27,30 @@ function App() {
   const botonChatRef = useRef<HTMLButtonElement>(null)
   const editorRef = useRef<Editor | null>(null)
 
-  const obtenerTexto = useCallback(() => {
+  const obtenerDocumento = useCallback(() => {
     const editor = editorRef.current
-    if (!editor) return ''
+    if (!editor) return { texto: '', idsParrafos: [] }
 
-    return unirParrafos(extraerParrafos(editor))
+    // Una sola lectura del documento: el texto y la foto de IDs salen de la
+    // misma lista, así que `parrafo_id` siempre apunta al bloque correcto.
+    const parrafos = extraerParrafosConId(editor)
+
+    return {
+      texto: unirParrafos(parrafos.map((parrafo) => parrafo.texto)),
+      idsParrafos: parrafos.map((parrafo) => parrafo.id),
+    }
   }, [])
 
   const registrarEditor = useCallback((editor: Editor | null) => {
     editorRef.current = editor
   }, [])
 
-  const chat = useChatTutor(tipoDocumento, obtenerTexto)
+  const chat = useChatTutor(tipoDocumento, obtenerDocumento)
   const tema = useTema()
+  const resaltados = useMemo(
+    () => construirResaltados(chat.mensajes),
+    [chat.mensajes],
+  )
 
   useEffect(() => {
     let activo = true
@@ -123,6 +135,7 @@ function App() {
           <EditorTexto
             documentoInicial={documento}
             tipoDocumento={tipoDocumento}
+            resaltados={resaltados}
             onEditorListo={registrarEditor}
           />
         </main>

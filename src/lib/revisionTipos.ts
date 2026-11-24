@@ -39,6 +39,17 @@ export const ETIQUETAS_SECCION: Record<SeccionRevision, string> = {
   documento: 'el documento completo',
 }
 
+export const SEVERIDADES = ['baja', 'media', 'alta'] as const
+
+export type Severidad = (typeof SEVERIDADES)[number]
+
+export function esSeveridad(valor: unknown): valor is Severidad {
+  return (
+    typeof valor === 'string' &&
+    (SEVERIDADES as readonly string[]).includes(valor)
+  )
+}
+
 /**
  * Límite del texto que se envía a revisar. Se comprueba en el cliente para no
  * hacer la petición y en el servidor para no confiar en el cliente.
@@ -50,6 +61,9 @@ export type Observacion = {
   tipo_problema: TipoProblema
   observacion: string
   pregunta_guia: string
+  criterio_id?: string
+  severidad?: Severidad
+  origen?: string
 }
 
 export const PREGUNTA_GUIA_DOCUMENTO_INCOMPLETO =

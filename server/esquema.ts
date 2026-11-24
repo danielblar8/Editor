@@ -3,8 +3,10 @@ import type { TipoDocumentoId } from '../src/lib/tiposDocumento.ts'
 import { esTipoDocumentoId } from '../src/lib/tiposDocumento.ts'
 import {
   SECCIONES_REVISION,
+  SEVERIDADES,
   TIPOS_PROBLEMA,
 } from '../src/lib/revisionTipos.ts'
+import type { Severidad } from '../src/lib/revisionTipos.ts'
 
 export const esquemaTipoDocumento = z.custom<TipoDocumentoId>(
   (valor) => esTipoDocumentoId(valor),
@@ -19,11 +21,9 @@ export const esquemaPeticionRevision = z.object({
   seccion: esquemaSeccion,
 })
 
-export const SEVERIDADES = ['baja', 'media', 'alta'] as const
-
 export const esquemaSeveridad = z.enum(SEVERIDADES)
 
-export type Severidad = z.infer<typeof esquemaSeveridad>
+export type { Severidad }
 
 export const esquemaObservacion = z.object({
   parrafo_id: z

@@ -3,8 +3,15 @@ import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GramaticaDecoraciones } from '../extensions/GramaticaDecoraciones'
+import type { PayloadMetaObservaciones } from '../extensions/ObservacionesDecoraciones'
+import {
+  CLAVE_META_OBSERVACIONES,
+  ObservacionesDecoraciones,
+} from '../extensions/ObservacionesDecoraciones'
+import { ParrafoId } from '../extensions/ParrafoId'
 import { useGramatica } from '../hooks/useGramatica'
 import type { EstadoGramatica } from '../lib/gramaticaTipos'
+import type { ResaltadoParrafo } from '../lib/observaciones'
 import type { DocumentoGuardado } from '../lib/storage'
 import { guardarDocumento } from '../lib/storage'
 import { contarPalabras, formatearPalabras } from '../lib/texto'
@@ -14,6 +21,7 @@ import { BarraHerramientas } from './BarraHerramientas'
 type EditorTextoProps = {
   documentoInicial: DocumentoGuardado
   tipoDocumento: TipoDocumentoId
+  resaltados: readonly ResaltadoParrafo[]
   onEditorListo?: (editor: Editor | null) => void
 }
 
@@ -51,6 +59,7 @@ const COLOR_GRAMATICA: Record<EstadoGramatica, string> = {
 export function EditorTexto({
   documentoInicial,
   tipoDocumento,
+  resaltados,
   onEditorListo,
 }: EditorTextoProps) {
   const [estadoGuardado, setEstadoGuardado] =
@@ -98,7 +107,9 @@ export function EditorTexto({
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
+      ParrafoId,
       GramaticaDecoraciones,
+      ObservacionesDecoraciones,
     ],
     content: documentoInicial.contenido,
     editorProps: {
@@ -128,6 +139,20 @@ export function EditorTexto({
   })
 
   const estadoGramatica = useGramatica(editor)
+
+  // Las decoraciones se aplican con una transacción de metadatos: no cambian
+  // el documento, así que no disparan autoguardado ni la revisión gramatical.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return
+
+    const payload: PayloadMetaObservaciones = {
+      resaltados: [...resaltados],
+    }
+
+    editor.view.dispatch(
+      editor.state.tr.setMeta(CLAVE_META_OBSERVACIONES, payload),
+    )
+  }, [editor, resaltados])
 
   const palabras = useEditorState({
     editor,

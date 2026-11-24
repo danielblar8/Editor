@@ -35,6 +35,12 @@
   --success: #047857;
   --warning: #b45309;
   --danger: #dc2626;
+  --obs-alta: #b91c1c;
+  --obs-alta-fondo: rgb(185 28 28 / 0.07);
+  --obs-media: #b45309;
+  --obs-media-fondo: rgb(180 83 9 / 0.08);
+  --obs-baja: #0369a1;
+  --obs-baja-fondo: rgb(3 105 161 / 0.07);
 }
 
 :root[data-theme='oscuro'] {
@@ -69,6 +75,12 @@
   --success: #6ee7b7;
   --warning: #fcd34d;
   --danger: #f87171;
+  --obs-alta: #f87171;
+  --obs-alta-fondo: rgb(248 113 113 / 0.14);
+  --obs-media: #fcd34d;
+  --obs-media-fondo: rgb(252 211 77 / 0.13);
+  --obs-baja: #7dd3fc;
+  --obs-baja-fondo: rgb(125 211 252 / 0.12);
 }
 
 @theme inline {
@@ -225,4 +237,34 @@ body {
   background-color: var(--tooltip);
   color: var(--tooltip-ink);
   content: attr(data-mensaje);
+}
+
+/* Resaltado de observaciones del tutor.
+   Se pinta sobre el bloque con una franja interior y un fondo tenue: no cambia
+   el texto, no mueve el contenido y no pisa el subrayado ondulado de
+   LanguageTool (que es una decoración inline sobre el texto). La severidad se
+   distingue por grosor de la franja además del color, no solo por color. */
+.contenido-editor .observacion-tutor {
+  @apply relative rounded-sm;
+  background-color: var(--obs-fondo);
+  box-shadow: inset 4px 0 0 var(--obs-color);
+  scroll-margin-top: 8rem;
+}
+
+.contenido-editor .observacion-tutor--alta {
+  --obs-color: var(--obs-alta);
+  --obs-fondo: var(--obs-alta-fondo);
+  box-shadow: inset 6px 0 0 var(--obs-color);
+}
+
+.contenido-editor .observacion-tutor--media {
+  --obs-color: var(--obs-media);
+  --obs-fondo: var(--obs-media-fondo);
+  box-shadow: inset 4px 0 0 var(--obs-color);
+}
+
+.contenido-editor .observacion-tutor--baja {
+  --obs-color: var(--obs-baja);
+  --obs-fondo: var(--obs-baja-fondo);
+  box-shadow: inset 2px 0 0 var(--obs-color);
 }

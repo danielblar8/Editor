@@ -3,6 +3,7 @@ import { obtenerTipoDocumento } from './tiposDocumento'
 import type { Observacion, SeccionRevision } from './revisionTipos'
 import {
   detectarSeccion,
+  esSeveridad,
   ETIQUETAS_SECCION,
   ETIQUETAS_TIPO_PROBLEMA,
   LIMITE_CARACTERES_TEXTO,
@@ -26,6 +27,12 @@ export type MensajeChat = {
   creadoEn: string
   variante: VarianteMensaje
   observacion?: Observacion
+  /**
+   * ID persistente del bloque al que se refiere la observación. Se resuelve
+   * en el momento de la petición, con la misma lista de bloques que se envió al
+   * backend. `null` si no se pudo resolver.
+   */
+  parrafoId?: string | null
 }
 
 export type PeticionTutor = {
@@ -85,22 +92,28 @@ export function crearMensajeTextoLargo(): MensajeChat {
 
 export function crearMensajeObservacion(
   observacion: Observacion,
+  idsParrafos: readonly (string | null)[] = [],
 ): MensajeChat {
   const texto = `Párrafo ${observacion.parrafo_id} · ${ETIQUETAS_TIPO_PROBLEMA[observacion.tipo_problema]}\n${observacion.observacion}\nPregunta guía: ${observacion.pregunta_guia}`
 
   return {
     ...crearMensaje('tutor', texto, 'revision'),
     observacion,
+    parrafoId: idsParrafos[observacion.parrafo_id - 1] ?? null,
   }
 }
 
 /**
  * Convierte la salida del backend en mensajes del chat. Una revisión sin
  * problemas no inventa observaciones: lo dice con un mensaje normal.
+ *
+ * `idsParrafos` es la foto tomada al enviar la petición: el índice
+ * `parrafo_id - 1` del servidor corresponde al mismo bloque del cliente.
  */
 export function crearMensajesRevision(
   seccion: SeccionRevision,
   observaciones: Observacion[],
+  idsParrafos: readonly (string | null)[] = [],
 ): MensajeChat[] {
   if (observaciones.length === 0) {
     return [
@@ -110,7 +123,9 @@ export function crearMensajesRevision(
     ]
   }
 
-  return observaciones.map(crearMensajeObservacion)
+  return observaciones.map((observacion) =>
+    crearMensajeObservacion(observacion, idsParrafos),
+  )
 }
 
 export function crearMensajeBienvenida(
@@ -159,7 +174,7 @@ function esObservacion(valor: unknown): valor is Observacion {
     typeof valor.pregunta_guia === 'string' &&
     valor.pregunta_guia.length > 0 &&
     esCadenaOpcional(valor.criterio_id) &&
-    esCadenaOpcional(valor.severidad) &&
+    (valor.severidad === undefined || esSeveridad(valor.severidad)) &&
     esCadenaOpcional(valor.origen)
   )
 }
