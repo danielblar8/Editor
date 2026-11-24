@@ -21,6 +21,7 @@ export const TIEMPO_TOTAL_SERVIDOR_MS = 55_000
 export const TIEMPO_MAPA_MS = 15_000
 export const MAX_LLAMADAS_POR_REVISION = 3
 export const REINTENTOS_POR_LLAMADA = 1
+export const ESPERA_REINTENTO_503_MS = 1_500
 
 export const CRITERIO_ESTRUCTURA_BASE = 'estructura.base'
 export const CRITERIO_ESTRUCTURA_INCOMPLETO = 'estructura.incompleto'

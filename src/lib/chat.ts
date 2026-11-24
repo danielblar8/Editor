@@ -3,6 +3,7 @@ import { obtenerTipoDocumento } from './tiposDocumento'
 import type { Observacion, SeccionRevision } from './revisionTipos'
 import {
   detectarSeccion,
+  esSeveridad,
   ETIQUETAS_SECCION,
   ETIQUETAS_TIPO_PROBLEMA,
   LIMITE_CARACTERES_TEXTO,
@@ -26,6 +27,18 @@ export type MensajeChat = {
   creadoEn: string
   variante: VarianteMensaje
   observacion?: Observacion
+  /**
+   * Agrupa los mensajes que devolvió una misma revisión. Los resaltados del
+   * editor salen solo de la última revisión; las tarjetas anteriores quedan
+   * como historial sin pintar el documento. Los errores no llevan este campo.
+   */
+  idRevision?: string
+  /**
+   * ID persistente del bloque al que se refiere la observación. Se resuelve
+   * en el momento de la petición, con la misma lista de bloques que se envió al
+   * backend. `null` si no se pudo resolver.
+   */
+  parrafoId?: string | null
 }
 
 export type PeticionTutor = {
@@ -85,32 +98,50 @@ export function crearMensajeTextoLargo(): MensajeChat {
 
 export function crearMensajeObservacion(
   observacion: Observacion,
+  idsParrafos: readonly (string | null)[] = [],
+  idRevision: string = crypto.randomUUID(),
 ): MensajeChat {
   const texto = `Párrafo ${observacion.parrafo_id} · ${ETIQUETAS_TIPO_PROBLEMA[observacion.tipo_problema]}\n${observacion.observacion}\nPregunta guía: ${observacion.pregunta_guia}`
 
   return {
     ...crearMensaje('tutor', texto, 'revision'),
+    idRevision,
     observacion,
+    parrafoId: idsParrafos[observacion.parrafo_id - 1] ?? null,
   }
 }
 
 /**
  * Convierte la salida del backend en mensajes del chat. Una revisión sin
  * problemas no inventa observaciones: lo dice con un mensaje normal.
+ *
+ * `idsParrafos` es la foto tomada al enviar la petición: el índice
+ * `parrafo_id - 1` del servidor corresponde al mismo bloque del cliente.
+ *
+ * Todos los mensajes de la respuesta comparten `idRevision`, incluido el de
+ * «sin problemas», para que el editor sepa cuál es la revisión más reciente.
  */
 export function crearMensajesRevision(
   seccion: SeccionRevision,
   observaciones: Observacion[],
+  idsParrafos: readonly (string | null)[] = [],
 ): MensajeChat[] {
+  const idRevision = crypto.randomUUID()
+
   if (observaciones.length === 0) {
     return [
-      crearMensajeTutor(
-        `Revisé ${ETIQUETAS_SECCION[seccion]} y no encontré problemas de estructura o coherencia. Si quieres, puedo revisar otra parte.`,
-      ),
+      {
+        ...crearMensajeTutor(
+          `Revisé ${ETIQUETAS_SECCION[seccion]} y no encontré problemas de estructura o coherencia. Si quieres, puedo revisar otra parte.`,
+        ),
+        idRevision,
+      },
     ]
   }
 
-  return observaciones.map(crearMensajeObservacion)
+  return observaciones.map((observacion) =>
+    crearMensajeObservacion(observacion, idsParrafos, idRevision),
+  )
 }
 
 export function crearMensajeBienvenida(
@@ -159,7 +190,7 @@ function esObservacion(valor: unknown): valor is Observacion {
     typeof valor.pregunta_guia === 'string' &&
     valor.pregunta_guia.length > 0 &&
     esCadenaOpcional(valor.criterio_id) &&
-    esCadenaOpcional(valor.severidad) &&
+    (valor.severidad === undefined || esSeveridad(valor.severidad)) &&
     esCadenaOpcional(valor.origen)
   )
 }

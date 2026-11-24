@@ -1,12 +1,18 @@
 import type { Editor } from '@tiptap/core'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChatLateral } from './components/ChatLateral'
 import { DialogoTipoDocumento } from './components/DialogoTipoDocumento'
 import { EditorTexto } from './components/EditorTexto'
 import { EncabezadoApp } from './components/EncabezadoApp'
 import { useChatTutor } from './hooks/useChatTutor'
 import { useTema } from './hooks/useTema'
-import { extraerParrafos, unirParrafos } from './lib/parrafos'
+import type { MensajeChat } from './lib/chat'
+import type { FocoObservacion } from './lib/observaciones'
+import {
+  construirResaltados,
+  obtenerIdUltimaRevision,
+} from './lib/observaciones'
+import { extraerParrafosConId, unirParrafos } from './lib/parrafos'
 import type { DocumentoGuardado } from './lib/storage'
 import { cargarDocumento } from './lib/storage'
 import type { TipoDocumentoId } from './lib/tiposDocumento'
@@ -23,22 +29,76 @@ function App() {
     () => !window.matchMedia('(max-width: 1023px)').matches,
   )
   const [enfocarChatAlAbrir, setEnfocarChatAlAbrir] = useState(false)
+  const [foco, setFoco] = useState<FocoObservacion | null>(null)
+  const [revisionOculta, setRevisionOculta] = useState<string | null>(null)
   const botonChatRef = useRef<HTMLButtonElement>(null)
   const editorRef = useRef<Editor | null>(null)
+  const secuenciaFocoRef = useRef(0)
 
-  const obtenerTexto = useCallback(() => {
+  const obtenerDocumento = useCallback(() => {
     const editor = editorRef.current
-    if (!editor) return ''
+    if (!editor) return { texto: '', idsParrafos: [] }
 
-    return unirParrafos(extraerParrafos(editor))
+    // Una sola lectura del documento: el texto y la foto de IDs salen de la
+    // misma lista, así que `parrafo_id` siempre apunta al bloque correcto.
+    const parrafos = extraerParrafosConId(editor)
+
+    return {
+      texto: unirParrafos(parrafos.map((parrafo) => parrafo.texto)),
+      idsParrafos: parrafos.map((parrafo) => parrafo.id),
+    }
   }, [])
 
   const registrarEditor = useCallback((editor: Editor | null) => {
     editorRef.current = editor
   }, [])
 
-  const chat = useChatTutor(tipoDocumento, obtenerTexto)
+  const chat = useChatTutor(tipoDocumento, obtenerDocumento)
   const tema = useTema()
+  const idRevisionActual = obtenerIdUltimaRevision(chat.mensajes)
+  const resaltadosDeRevision = useMemo(
+    () => construirResaltados(chat.mensajes),
+    [chat.mensajes],
+  )
+  const resaltados = useMemo(
+    () =>
+      revisionOculta && revisionOculta === idRevisionActual
+        ? []
+        : resaltadosDeRevision,
+    [idRevisionActual, resaltadosDeRevision, revisionOculta],
+  )
+
+  const verEnTexto = useCallback((mensaje: MensajeChat) => {
+    if (!mensaje.parrafoId || !mensaje.idRevision) return
+
+    secuenciaFocoRef.current += 1
+    setFoco({
+      parrafoId: mensaje.parrafoId,
+      idRevision: mensaje.idRevision,
+      origen: 'chat',
+      secuencia: secuenciaFocoRef.current,
+    })
+  }, [])
+
+  const senalarDesdeEditor = useCallback(
+    (parrafoId: string) => {
+      if (!idRevisionActual) return
+
+      secuenciaFocoRef.current += 1
+      setFoco({
+        parrafoId,
+        idRevision: idRevisionActual,
+        origen: 'editor',
+        secuencia: secuenciaFocoRef.current,
+      })
+    },
+    [idRevisionActual],
+  )
+
+  const quitarResaltados = useCallback(() => {
+    if (idRevisionActual) setRevisionOculta(idRevisionActual)
+    setFoco(null)
+  }, [idRevisionActual])
 
   useEffect(() => {
     let activo = true
@@ -123,6 +183,11 @@ function App() {
           <EditorTexto
             documentoInicial={documento}
             tipoDocumento={tipoDocumento}
+            resaltados={resaltados}
+            foco={foco}
+            idRevisionActual={idRevisionActual}
+            onParrafoResaltadoClic={senalarDesdeEditor}
+            onQuitarResaltados={quitarResaltados}
             onEditorListo={registrarEditor}
           />
         </main>
@@ -132,9 +197,13 @@ function App() {
             mensajes={chat.mensajes}
             enviando={chat.enviando}
             enfocarAlAbrir={enfocarChatAlAbrir}
+            foco={foco}
+            idRevisionActual={idRevisionActual}
+            resaltados={resaltados}
             onEnviar={(texto) => {
               void chat.enviar(texto)
             }}
+            onVerEnTexto={verEnTexto}
             onCerrar={cerrarChat}
           />
         )}

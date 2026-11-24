@@ -721,6 +721,28 @@ Quedan fuera del alcance de la Fase 5 y se retoman más adelante:
   `TypeValidationError` y `NoObjectGeneratedError` reales del SDK dentro del
   envoltorio y comprueban que se reintenta.
 
+### Ajuste posterior: reintento de 503 y modelo de respaldo
+
+- Los 503 (`servicio_no_disponible` con `estado: 503`) se reintentan una sola
+  vez tras una espera de 1,5 s (`ESPERA_REINTENTO_503_MS`). La espera responde
+  al `AbortController` del plazo global de 55 s, así que no lo extiende; si el
+  plazo vence mientras se espera, se propaga el error original sin otra llamada.
+- El filtro distingue por `estado`, no solo por código: la traducción agrupa
+  500/502/504 bajo `servicio_no_disponible` y esos casos no se reintentan.
+  Tampoco se reintentan cuota, configuración, tiempo ni conexión.
+- `GEMINI_MODEL_RESPALDO` es opcional, solo se lee en el servidor y no tiene
+  valor por defecto en el código. Si el primer intento devuelve 503 y la
+  variable existe, el segundo usa ese modelo; si falta o está vacía, el
+  reintento usa `GEMINI_MODEL`. El reintento por `respuesta_invalida` nunca
+  cambia de modelo.
+- El presupuesto sigue siendo de 3 llamadas por revisión y el SDK conserva
+  `maxRetries: 0`. Agotar el presupuesto produce un 503 que no dispara otro
+  intento.
+- Pruebas con `llamada` inyectada: 503 seguido de éxito (dos intentos y error
+  previo disponible para elegir modelo), dos 503 (se agota), 429 tras un 503 y
+  `configuracion` (sin reintento), 5xx que no es 503 y señal abortada (sin
+  reintento). Las pruebas usan `esperaMs: 0` para no depender de temporizadores.
+
 ### Verificación semántica sobre texto real
 
 - `verificarSemantica` ya no compara las ideas anunciadas contra
