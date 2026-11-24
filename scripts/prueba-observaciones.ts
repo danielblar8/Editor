@@ -8,7 +8,10 @@ import {
 } from '../src/extensions/ObservacionesDecoraciones.ts'
 import { ParrafoId } from '../src/extensions/ParrafoId.ts'
 import type { MensajeChat } from '../src/lib/chat.ts'
-import { crearMensajesRevision } from '../src/lib/chat.ts'
+import {
+  crearMensajeTutor,
+  crearMensajesRevision,
+} from '../src/lib/chat.ts'
 import {
   construirResaltados,
   severidadEfectiva,
@@ -67,15 +70,30 @@ function observacion(
 function mensajeCon(
   parrafoId: string | null,
   obs: Observacion,
+  idRevision = 'r1',
 ): MensajeChat {
   return {
-    id: `m-${parrafoId}-${obs.tipo_problema}`,
+    id: `m-${idRevision}-${parrafoId}-${obs.tipo_problema}`,
     autor: 'tutor',
     texto: 'texto',
     creadoEn: '2026-01-01T00:00:00.000Z',
     variante: 'revision',
+    idRevision,
     observacion: obs,
     parrafoId,
+  }
+}
+
+function mensajeSinRevision(
+  texto: string,
+  variante: MensajeChat['variante'] = 'normal',
+): MensajeChat {
+  return {
+    id: `normal-${texto}`,
+    autor: 'tutor',
+    texto,
+    creadoEn: '2026-01-01T00:00:00.000Z',
+    variante,
   }
 }
 
@@ -112,6 +130,97 @@ test('construirResaltados deduplica por párrafo y conserva la severidad máxima
     tipo: 'hueco_argumental',
     severidad: 'alta',
   })
+})
+
+test('solo resalta los párrafos de la última revisión', () => {
+  const mensajes: MensajeChat[] = [
+    mensajeCon('p1', observacion(1, 'hueco_argumental'), 'r1'),
+    mensajeCon('p2', observacion(2, 'hueco_argumental'), 'r1'),
+    mensajeCon('p2', observacion(2, 'desarrollo_corto'), 'r2'),
+  ]
+
+  assert.deepEqual(construirResaltados(mensajes), [
+    { parrafoId: 'p2', tipo: 'desarrollo_corto', severidad: 'media' },
+  ])
+})
+
+test('la severidad se decide dentro de la última revisión, no entre revisiones', () => {
+  const mensajes: MensajeChat[] = [
+    mensajeCon('p1', observacion(1, 'hueco_argumental', 'alta'), 'r1'),
+    mensajeCon('p1', observacion(1, 'desarrollo_corto', 'baja'), 'r2'),
+  ]
+
+  assert.deepEqual(construirResaltados(mensajes), [
+    { parrafoId: 'p1', tipo: 'desarrollo_corto', severidad: 'baja' },
+  ])
+})
+
+test('una revisión sin observaciones limpia los resaltados y conserva el historial', () => {
+  const idsParrafos = ['p1', 'p2']
+  const primera = crearMensajesRevision(
+    'documento',
+    [observacion(1, 'hueco_argumental')],
+    idsParrafos,
+  )
+  const segunda = crearMensajesRevision('documento', [], idsParrafos)
+  const mensajes: MensajeChat[] = [...primera, ...segunda]
+
+  assert.equal(construirResaltados(mensajes).length, 0)
+  // Las tarjetas antiguas siguen en el chat, solo dejan de pintar el editor.
+  assert.equal(mensajes.length, 2)
+  assert.equal(mensajes.filter((mensaje) => mensaje.observacion).length, 1)
+})
+
+test('un mensaje normal o de error posterior no borra los resaltados de la última revisión', () => {
+  const revision = crearMensajesRevision(
+    'documento',
+    [observacion(1, 'hueco_argumental')],
+    ['p1'],
+  )
+  const mensajes: MensajeChat[] = [
+    ...revision,
+    crearMensajeTutor('No se pudo obtener la revisión. Inténtalo de nuevo.'),
+    mensajeSinRevision('Tipo de documento actualizado.', 'aviso'),
+  ]
+
+  const resaltados = construirResaltados(mensajes)
+
+  assert.equal(resaltados.length, 1)
+  assert.equal(resaltados[0]?.parrafoId, 'p1')
+})
+
+test('sin ninguna revisión no hay resaltados', () => {
+  const mensajes: MensajeChat[] = [
+    mensajeSinRevision('Hola, soy tu tutor.', 'bienvenida'),
+    mensajeSinRevision('Tu documento está vacío.'),
+  ]
+
+  assert.deepEqual(construirResaltados(mensajes), [])
+})
+
+test('cada revisión agrupa sus tarjetas bajo un idRevision propio', () => {
+  const observaciones = [
+    observacion(1, 'hueco_argumental'),
+    observacion(2, 'desarrollo_corto'),
+  ]
+  const primera = crearMensajesRevision('documento', observaciones)
+  const segunda = crearMensajesRevision('documento', observaciones)
+  const sinProblemas = crearMensajesRevision('documento', [])
+
+  const id = primera[0]?.idRevision
+  assert.ok(id)
+  assert.ok(primera.every((mensaje) => mensaje.idRevision === id))
+  assert.ok(
+    segunda.every((mensaje) => mensaje.idRevision && mensaje.idRevision !== id),
+  )
+  assert.ok(sinProblemas[0]?.idRevision)
+
+  // La ruta real de error de useChatTutor no cuenta como revisión.
+  assert.equal(
+    crearMensajeTutor('No se pudo obtener la revisión. Inténtalo de nuevo.')
+      .idRevision,
+    undefined,
+  )
 })
 
 test('resuelve parrafo_id con la foto de IDs de la petición', () => {

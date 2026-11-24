@@ -41,7 +41,27 @@ export function severidadEfectiva(observacion: {
 }
 
 /**
- * Convierte los mensajes con observación en la lista de bloques a resaltar.
+ * ID de la revisión más reciente del historial. `undefined` si el usuario aún
+ * no ha pedido ninguna revisión.
+ */
+function idUltimaRevision(mensajes: readonly MensajeChat[]): string | undefined {
+  let ultima: string | undefined
+
+  for (const mensaje of mensajes) {
+    if (mensaje.idRevision) ultima = mensaje.idRevision
+  }
+
+  return ultima
+}
+
+/**
+ * Convierte los mensajes de la última revisión en la lista de bloques a
+ * resaltar.
+ *
+ * Solo se tienen en cuenta las tarjetas de la revisión más reciente: una nueva
+ * revisión reemplaza los resaltados anteriores y una revisión sin problemas
+ * deja el editor limpio. Las tarjetas antiguas siguen en el chat como
+ * historial, y los mensajes de error no cuentan como revisión.
  *
  * Solo incluye observaciones que se pudieron resolver a un ID persistente en
  * el momento de la petición. Si hay varias observaciones sobre el mismo
@@ -50,9 +70,15 @@ export function severidadEfectiva(observacion: {
 export function construirResaltados(
   mensajes: readonly MensajeChat[],
 ): ResaltadoParrafo[] {
+  const ultimaRevision = idUltimaRevision(mensajes)
+
+  if (!ultimaRevision) return []
+
   const porParrafo = new Map<string, ResaltadoParrafo>()
 
   for (const mensaje of mensajes) {
+    if (mensaje.idRevision !== ultimaRevision) continue
+
     const observacion = mensaje.observacion
     const parrafoId = mensaje.parrafoId
 
