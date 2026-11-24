@@ -46,7 +46,7 @@ export class ErrorTutor extends Error {
   }
 }
 
-const TIEMPO_MAXIMO_REVISION_MS = 50_000
+const TIEMPO_MAXIMO_REVISION_MS = 60_000
 const TIPOS_PROBLEMA_VALIDOS = new Set<string>(TIPOS_PROBLEMA)
 
 function crearMensaje(
@@ -141,6 +141,10 @@ function esObjeto(valor: unknown): valor is Record<string, unknown> {
   return typeof valor === 'object' && valor !== null
 }
 
+function esCadenaOpcional(valor: unknown): boolean {
+  return valor === undefined || (typeof valor === 'string' && valor.length > 0)
+}
+
 function esObservacion(valor: unknown): valor is Observacion {
   if (!esObjeto(valor)) return false
 
@@ -153,7 +157,20 @@ function esObservacion(valor: unknown): valor is Observacion {
     typeof valor.observacion === 'string' &&
     valor.observacion.length > 0 &&
     typeof valor.pregunta_guia === 'string' &&
-    valor.pregunta_guia.length > 0
+    valor.pregunta_guia.length > 0 &&
+    esCadenaOpcional(valor.criterio_id) &&
+    esCadenaOpcional(valor.severidad) &&
+    esCadenaOpcional(valor.origen)
+  )
+}
+
+function esRespuestaRevision(
+  datos: Record<string, unknown>,
+): datos is Record<string, unknown> & { observaciones: unknown[] } {
+  return (
+    Array.isArray(datos.observaciones) &&
+    (datos.mapa === undefined || esObjeto(datos.mapa)) &&
+    (datos.metricas === undefined || esObjeto(datos.metricas))
   )
 }
 
@@ -245,19 +262,20 @@ export async function responderTutor({
     throw new ErrorTutor(mensajeDeError(respuesta.status, datos))
   }
 
-  if (!esObjeto(datos) || !Array.isArray(datos.observaciones)) {
+  if (!esObjeto(datos) || !esRespuestaRevision(datos)) {
     throw new ErrorTutor(
       'El tutor devolvió una respuesta que no pude interpretar. Inténtalo de nuevo.',
     )
   }
 
-  const observaciones = datos.observaciones
-  for (const observacion of observaciones) {
+  const observaciones: Observacion[] = []
+  for (const observacion of datos.observaciones) {
     if (!esObservacion(observacion)) {
       throw new ErrorTutor(
         'El tutor devolvió una respuesta que no pude interpretar. Inténtalo de nuevo.',
       )
     }
+    observaciones.push(observacion)
   }
 
   return { seccion, observaciones }

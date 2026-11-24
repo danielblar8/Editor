@@ -64,13 +64,18 @@ app.post('/api/revisar', async (c) => {
     )
   }
 
-  const observaciones = await revisarConGemini({
+  const revision = await revisarConGemini({
     texto: textoLimpio,
     tipoDocumento,
     seccion,
   })
 
-  return c.json({ ok: true, observaciones })
+  return c.json({
+    ok: true,
+    observaciones: revision.observaciones,
+    mapa: revision.mapa,
+    metricas: revision.metricas,
+  })
 })
 
 app.post('/api/gramatica', async (c) => {

@@ -43,13 +43,26 @@ export const ETIQUETAS_SECCION: Record<SeccionRevision, string> = {
  * Límite del texto que se envía a revisar. Se comprueba en el cliente para no
  * hacer la petición y en el servidor para no confiar en el cliente.
  */
-export const LIMITE_CARACTERES_TEXTO = 12_000
+export const LIMITE_CARACTERES_TEXTO = 30_000
 
 export type Observacion = {
   parrafo_id: number
   tipo_problema: TipoProblema
   observacion: string
   pregunta_guia: string
+}
+
+export const PREGUNTA_GUIA_DOCUMENTO_INCOMPLETO =
+  '¿Qué argumentos sostendrán la tesis que planteas en la introducción?'
+
+export const PREGUNTAS_GUIA_FIJAS: Record<TipoProblema, string> = {
+  hueco_argumental: '¿Qué evidencia falta para sostener este argumento?',
+  idea_no_retomada: '¿Dónde retomas esa idea anunciada?',
+  desarrollo_corto: '¿Qué razones o ejemplos faltan en el desarrollo?',
+  conclusion_incoherente: '¿Cómo se conecta tu cierre con la idea inicial?',
+  idea_nueva_en_conclusion: '¿Qué temas nuevos aparecen solo al final?',
+  desequilibrio_entre_secciones:
+    '¿Qué sección necesita más espacio para sostener tu texto?',
 }
 
 function normalizarMensaje(mensaje: string): string {
