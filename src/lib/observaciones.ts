@@ -41,10 +41,23 @@ export function severidadEfectiva(observacion: {
 }
 
 /**
+ * Foco de navegación entre chat y editor. `origen` distingue quién lo pidió:
+ * solo `chat` dispara el resaltado temporal en el documento.
+ */
+export type FocoObservacion = {
+  parrafoId: string
+  idRevision: string
+  origen: 'chat' | 'editor'
+  secuencia: number
+}
+
+/**
  * ID de la revisión más reciente del historial. `undefined` si el usuario aún
  * no ha pedido ninguna revisión.
  */
-function idUltimaRevision(mensajes: readonly MensajeChat[]): string | undefined {
+export function obtenerIdUltimaRevision(
+  mensajes: readonly MensajeChat[],
+): string | undefined {
   let ultima: string | undefined
 
   for (const mensaje of mensajes) {
@@ -70,7 +83,7 @@ function idUltimaRevision(mensajes: readonly MensajeChat[]): string | undefined 
 export function construirResaltados(
   mensajes: readonly MensajeChat[],
 ): ResaltadoParrafo[] {
-  const ultimaRevision = idUltimaRevision(mensajes)
+  const ultimaRevision = obtenerIdUltimaRevision(mensajes)
 
   if (!ultimaRevision) return []
 
@@ -100,4 +113,35 @@ export function construirResaltados(
   }
 
   return [...porParrafo.values()]
+}
+
+/**
+ * Una tarjeta solo es navegable si pertenece a la revisión visible y su
+ * observación se pudo resolver a un bloque que sigue resaltado.
+ */
+export function mensajeEsNavegable(
+  mensaje: MensajeChat,
+  idRevisionActual: string | undefined,
+  resaltados: readonly ResaltadoParrafo[],
+): boolean {
+  return Boolean(
+    mensaje.observacion &&
+      mensaje.idRevision &&
+      mensaje.idRevision === idRevisionActual &&
+      mensaje.parrafoId &&
+      resaltados.some((resaltado) => resaltado.parrafoId === mensaje.parrafoId),
+  )
+}
+
+/** True cuando el párrafo señalado corresponde a esta tarjeta. */
+export function esTarjetaActiva(
+  mensaje: MensajeChat,
+  foco: FocoObservacion | null,
+): boolean {
+  return Boolean(
+    foco &&
+      mensaje.observacion &&
+      mensaje.idRevision === foco.idRevision &&
+      mensaje.parrafoId === foco.parrafoId,
+  )
 }

@@ -268,3 +268,32 @@ body {
   --obs-fondo: var(--obs-baja-fondo);
   box-shadow: inset 2px 0 0 var(--obs-color);
 }
+
+/* Énfasis temporal cuando se llega desde una tarjeta del chat. El contorno
+   estático también sirve con movimiento reducido; solo se desactiva la
+   animación, no la señal visual. */
+@keyframes observacion-foco {
+  0%,
+  100% {
+    box-shadow:
+      inset 4px 0 0 var(--obs-color),
+      0 0 0 0 var(--focus);
+  }
+  50% {
+    box-shadow:
+      inset 6px 0 0 var(--obs-color),
+      0 0 0 3px var(--focus);
+  }
+}
+
+.contenido-editor .observacion-tutor--foco {
+  animation: observacion-foco 0.8s ease-in-out 3;
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .contenido-editor .observacion-tutor--foco {
+    animation: none;
+  }
+}

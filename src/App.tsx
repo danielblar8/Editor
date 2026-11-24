@@ -6,7 +6,12 @@ import { EditorTexto } from './components/EditorTexto'
 import { EncabezadoApp } from './components/EncabezadoApp'
 import { useChatTutor } from './hooks/useChatTutor'
 import { useTema } from './hooks/useTema'
-import { construirResaltados } from './lib/observaciones'
+import type { MensajeChat } from './lib/chat'
+import type { FocoObservacion } from './lib/observaciones'
+import {
+  construirResaltados,
+  obtenerIdUltimaRevision,
+} from './lib/observaciones'
 import { extraerParrafosConId, unirParrafos } from './lib/parrafos'
 import type { DocumentoGuardado } from './lib/storage'
 import { cargarDocumento } from './lib/storage'
@@ -24,8 +29,11 @@ function App() {
     () => !window.matchMedia('(max-width: 1023px)').matches,
   )
   const [enfocarChatAlAbrir, setEnfocarChatAlAbrir] = useState(false)
+  const [foco, setFoco] = useState<FocoObservacion | null>(null)
+  const [revisionOculta, setRevisionOculta] = useState<string | null>(null)
   const botonChatRef = useRef<HTMLButtonElement>(null)
   const editorRef = useRef<Editor | null>(null)
+  const secuenciaFocoRef = useRef(0)
 
   const obtenerDocumento = useCallback(() => {
     const editor = editorRef.current
@@ -47,10 +55,50 @@ function App() {
 
   const chat = useChatTutor(tipoDocumento, obtenerDocumento)
   const tema = useTema()
-  const resaltados = useMemo(
+  const idRevisionActual = obtenerIdUltimaRevision(chat.mensajes)
+  const resaltadosDeRevision = useMemo(
     () => construirResaltados(chat.mensajes),
     [chat.mensajes],
   )
+  const resaltados = useMemo(
+    () =>
+      revisionOculta && revisionOculta === idRevisionActual
+        ? []
+        : resaltadosDeRevision,
+    [idRevisionActual, resaltadosDeRevision, revisionOculta],
+  )
+
+  const verEnTexto = useCallback((mensaje: MensajeChat) => {
+    if (!mensaje.parrafoId || !mensaje.idRevision) return
+
+    secuenciaFocoRef.current += 1
+    setFoco({
+      parrafoId: mensaje.parrafoId,
+      idRevision: mensaje.idRevision,
+      origen: 'chat',
+      secuencia: secuenciaFocoRef.current,
+    })
+  }, [])
+
+  const senalarDesdeEditor = useCallback(
+    (parrafoId: string) => {
+      if (!idRevisionActual) return
+
+      secuenciaFocoRef.current += 1
+      setFoco({
+        parrafoId,
+        idRevision: idRevisionActual,
+        origen: 'editor',
+        secuencia: secuenciaFocoRef.current,
+      })
+    },
+    [idRevisionActual],
+  )
+
+  const quitarResaltados = useCallback(() => {
+    if (idRevisionActual) setRevisionOculta(idRevisionActual)
+    setFoco(null)
+  }, [idRevisionActual])
 
   useEffect(() => {
     let activo = true
@@ -136,6 +184,10 @@ function App() {
             documentoInicial={documento}
             tipoDocumento={tipoDocumento}
             resaltados={resaltados}
+            foco={foco}
+            idRevisionActual={idRevisionActual}
+            onParrafoResaltadoClic={senalarDesdeEditor}
+            onQuitarResaltados={quitarResaltados}
             onEditorListo={registrarEditor}
           />
         </main>
@@ -145,9 +197,13 @@ function App() {
             mensajes={chat.mensajes}
             enviando={chat.enviando}
             enfocarAlAbrir={enfocarChatAlAbrir}
+            foco={foco}
+            idRevisionActual={idRevisionActual}
+            resaltados={resaltados}
             onEnviar={(texto) => {
               void chat.enviar(texto)
             }}
+            onVerEnTexto={verEnTexto}
             onCerrar={cerrarChat}
           />
         )}

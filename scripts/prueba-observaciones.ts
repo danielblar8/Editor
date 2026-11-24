@@ -2,9 +2,14 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { getSchema } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
+import { EditorState } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import {
+  CLAVE_META_FOCO,
+  CLAVE_META_OBSERVACIONES,
+  clavePluginObservaciones,
   crearDecoracionesObservaciones,
+  ObservacionesDecoraciones,
 } from '../src/extensions/ObservacionesDecoraciones.ts'
 import { ParrafoId } from '../src/extensions/ParrafoId.ts'
 import type { MensajeChat } from '../src/lib/chat.ts'
@@ -14,6 +19,9 @@ import {
 } from '../src/lib/chat.ts'
 import {
   construirResaltados,
+  esTarjetaActiva,
+  mensajeEsNavegable,
+  obtenerIdUltimaRevision,
   severidadEfectiva,
 } from '../src/lib/observaciones.ts'
 import type { Observacion } from '../src/lib/revisionTipos.ts'
@@ -277,6 +285,7 @@ test('crea una decoración de nodo sobre el bloque observado', () => {
     parrafoId: 'p2',
     tipo: 'desarrollo_corto',
     severidad: 'media',
+    foco: false,
   })
   assert.equal(doc.textContent, antes)
 })
@@ -330,4 +339,146 @@ test('el resaltado del tutor convive con el subrayado gramatical inline', () => 
     ),
   )
   assert.equal(doc.textContent, antes)
+})
+
+test('el foco añade una clase al bloque sin tocar el documento', () => {
+  const doc = documento()
+  const antes = doc.toJSON()
+  const resaltados = [
+    { parrafoId: 'p2', tipo: 'desarrollo_corto' as const, severidad: 'media' as const },
+  ]
+
+  const decoraciones = crearDecoracionesObservaciones(doc, resaltados, 'p2')
+  const encontradas = decoraciones.find()
+  const [decoracion] = encontradas
+
+  assert.equal(encontradas.length, 1)
+  assert.ok(decoracion)
+  assert.match(
+    String(atributos(decoracion).class),
+    /observacion-tutor--foco/,
+  )
+  assert.equal(decoracion.spec.foco, true)
+  assert.deepEqual(doc.toJSON(), antes)
+})
+
+test('la transacción de foco no cambia el documento ni la selección', () => {
+  const plugins =
+    ObservacionesDecoraciones.config.addProseMirrorPlugins?.call(
+      {} as never,
+    ) ?? []
+  const estado = EditorState.create({
+    schema: esquema,
+    doc: documento(),
+    plugins,
+  })
+  const conResaltados = estado.apply(
+    estado.tr.setMeta(CLAVE_META_OBSERVACIONES, {
+      resaltados: [
+        {
+          parrafoId: 'p1',
+          tipo: 'hueco_argumental' as const,
+          severidad: 'alta' as const,
+        },
+      ],
+    }),
+  )
+  const transaccion = conResaltados.tr.setMeta(CLAVE_META_FOCO, {
+    parrafoId: 'p1',
+  })
+  const conFoco = conResaltados.apply(transaccion)
+
+  assert.equal(transaccion.docChanged, false)
+  assert.equal(conFoco.doc.eq(conResaltados.doc), true)
+  assert.equal(conFoco.selection.eq(conResaltados.selection), true)
+
+  const decoraciones =
+    clavePluginObservaciones.getState(conFoco)?.decoraciones.find() ?? []
+  assert.equal(decoraciones.length, 1)
+  assert.match(
+    String(atributos(decoraciones[0] as Decoration).class),
+    /observacion-tutor--foco/,
+  )
+})
+
+test('borrar el bloque enfocado limpia su decoración sin errores', () => {
+  const plugins =
+    ObservacionesDecoraciones.config.addProseMirrorPlugins?.call(
+      {} as never,
+    ) ?? []
+  const estado = EditorState.create({
+    schema: esquema,
+    doc: documento(),
+    plugins,
+  })
+  const conResaltados = estado.apply(
+    estado.tr.setMeta(CLAVE_META_OBSERVACIONES, {
+      resaltados: [
+        {
+          parrafoId: 'p1',
+          tipo: 'hueco_argumental' as const,
+          severidad: 'alta' as const,
+        },
+      ],
+    }),
+  )
+  const conFoco = conResaltados.apply(
+    conResaltados.tr.setMeta(CLAVE_META_FOCO, { parrafoId: 'p1' }),
+  )
+  const sinBloque = conFoco.apply(
+    conFoco.tr.delete(0, conFoco.doc.child(0).nodeSize),
+  )
+
+  assert.equal(
+    clavePluginObservaciones.getState(sinBloque)?.decoraciones.find().length,
+    0,
+  )
+})
+
+test('solo son navegables las tarjetas de la revisión visible', () => {
+  const primera = crearMensajesRevision(
+    'documento',
+    [observacion(1, 'hueco_argumental')],
+    ['p1'],
+  )
+  const segunda = crearMensajesRevision(
+    'documento',
+    [observacion(1, 'desarrollo_corto')],
+    ['p1'],
+  )
+  const mensajes = [...primera, ...segunda]
+  const idRevision = obtenerIdUltimaRevision(mensajes)
+  const resaltados = construirResaltados(mensajes)
+
+  assert.ok(idRevision)
+  assert.equal(mensajeEsNavegable(primera[0] as MensajeChat, idRevision, resaltados), false)
+  assert.equal(mensajeEsNavegable(segunda[0] as MensajeChat, idRevision, resaltados), true)
+
+  const foco = {
+    parrafoId: 'p1',
+    idRevision,
+    origen: 'editor' as const,
+    secuencia: 1,
+  }
+  assert.equal(esTarjetaActiva(segunda[0] as MensajeChat, foco), true)
+  assert.equal(esTarjetaActiva(primera[0] as MensajeChat, foco), false)
+  assert.equal(esTarjetaActiva(segunda[0] as MensajeChat, null), false)
+})
+
+test('una observación sin ID de bloque no es navegable', () => {
+  const [mensaje] = crearMensajesRevision(
+    'documento',
+    [observacion(1, 'hueco_argumental')],
+    [null],
+  )
+  const idRevision = obtenerIdUltimaRevision([mensaje as MensajeChat])
+
+  assert.equal(
+    mensajeEsNavegable(
+      mensaje as MensajeChat,
+      idRevision,
+      construirResaltados([mensaje as MensajeChat]),
+    ),
+    false,
+  )
 })

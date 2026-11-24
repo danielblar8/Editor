@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as EventoTecladoReact } from 'react'
 import type { MensajeChat } from '../lib/chat'
+import type { FocoObservacion, ResaltadoParrafo } from '../lib/observaciones'
+import { esTarjetaActiva, mensajeEsNavegable } from '../lib/observaciones'
 import { ETIQUETAS_TIPO_PROBLEMA } from '../lib/revisionTipos'
 
 type ChatLateralProps = {
   mensajes: MensajeChat[]
   enviando: boolean
   enfocarAlAbrir: boolean
+  foco: FocoObservacion | null
+  idRevisionActual: string | undefined
+  resaltados: readonly ResaltadoParrafo[]
   onEnviar: (texto: string) => void
+  onVerEnTexto: (mensaje: MensajeChat) => void
   onCerrar: () => void
 }
 
@@ -36,7 +42,11 @@ export function ChatLateral({
   mensajes,
   enviando,
   enfocarAlAbrir,
+  foco,
+  idRevisionActual,
+  resaltados,
   onEnviar,
+  onVerEnTexto,
   onCerrar,
 }: ChatLateralProps) {
   const [texto, setTexto] = useState('')
@@ -210,13 +220,34 @@ export function ChatLateral({
                 pregunta_guia,
               } = mensaje.observacion
 
+              const navegable = mensajeEsNavegable(
+                mensaje,
+                idRevisionActual,
+                resaltados,
+              )
+              const activa = esTarjetaActiva(mensaje, foco)
+
               return (
                 <article
                   key={mensaje.id}
-                  className="flex justify-start"
+                  aria-current={activa ? 'location' : undefined}
+                  onClick={navegable ? () => onVerEnTexto(mensaje) : undefined}
+                  className={`flex justify-start ${navegable ? 'cursor-pointer' : ''}`}
                 >
-                  <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-line bg-observation px-3.5 py-3 text-sm leading-relaxed text-ink">
+                  <div
+                    className={[
+                      'max-w-[92%] rounded-2xl rounded-bl-md border px-3.5 py-3 text-sm leading-relaxed text-ink transition-colors',
+                      activa
+                        ? 'border-focus bg-observation ring-2 ring-focus'
+                        : navegable
+                          ? 'border-line bg-observation hover:border-subtle hover:bg-surface-muted'
+                          : 'border-line bg-observation',
+                    ].join(' ')}
+                  >
                     <p className="sr-only">Tutor:</p>
+                    {activa && (
+                      <p className="sr-only">Tarjeta señalada en el texto.</p>
+                    )}
                     <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
                       <span className="rounded-full bg-accent px-2 py-0.5 text-[0.65rem] font-semibold tracking-wide text-accent-ink uppercase">
                         Párrafo {parrafo_id}
@@ -232,6 +263,19 @@ export function ChatLateral({
                       </span>
                       {pregunta_guia}
                     </p>
+                    {navegable && (
+                      <button
+                        type="button"
+                        onClick={(evento) => {
+                          evento.stopPropagation()
+                          onVerEnTexto(mensaje)
+                        }}
+                        className="mt-2 inline-flex items-center rounded-md border border-line px-2 py-1 text-xs font-medium text-ink transition-colors hover:border-focus hover:text-focus focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                      >
+                        Ver en el texto
+                        <span className="sr-only"> del párrafo {parrafo_id}</span>
+                      </button>
+                    )}
                   </div>
                 </article>
               )
