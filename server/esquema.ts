@@ -19,6 +19,12 @@ export const esquemaPeticionRevision = z.object({
   seccion: esquemaSeccion,
 })
 
+export const SEVERIDADES = ['baja', 'media', 'alta'] as const
+
+export const esquemaSeveridad = z.enum(SEVERIDADES)
+
+export type Severidad = z.infer<typeof esquemaSeveridad>
+
 export const esquemaObservacion = z.object({
   parrafo_id: z
     .number()
@@ -40,6 +46,30 @@ export const esquemaObservacion = z.object({
     .describe(
       'Pregunta abierta para que el autor revise su propio texto sin recibir una versión corregida.',
     ),
+  criterio_id: z
+    .string()
+    .optional()
+    .describe('Identificador del criterio de la rúbrica que corresponde a la observación.'),
+  severidad: esquemaSeveridad
+    .optional()
+    .describe('Importancia estimada del problema detectado.'),
 })
 
+export type ObservacionValidada = z.infer<typeof esquemaObservacion>
+
+export const ORIGENES_OBSERVACION = ['modelo', 'codigo', 'fusionada'] as const
+
+export type OrigenObservacion = (typeof ORIGENES_OBSERVACION)[number]
+
+export const ETIQUETAS_ORIGEN_OBSERVACION: Record<OrigenObservacion, string> = {
+  modelo: 'modelo',
+  codigo: 'codigo',
+  fusionada: 'fusionada',
+}
+
+export type ObservacionConOrigen = ObservacionValidada & {
+  origen: OrigenObservacion
+}
+
 export const esquemaObservaciones = z.array(esquemaObservacion)
+

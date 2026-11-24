@@ -635,3 +635,179 @@ qué límites tiene.
 - La preferencia se guarda en localStorage: si el navegador la bloquea, el tema
   funciona solo durante la sesión.
 - Sin commit de cierre: los cambios quedan pendientes de revisión manual.
+
+## Pendientes detectados al planificar la Fase 5 (2026-11-20)
+
+Quedan fuera del alcance de la Fase 5 y se retoman más adelante:
+
+- Caché del mapa, IDs persistentes de párrafo, formato v3 y resaltado de las
+  observaciones del tutor en el editor: Fase 6.
+- Manejo fino de errores y suite de pruebas completa: Fase 7.
+
+## Fase 5 — Agente completo (2026-11-22)
+
+### Métricas, mapa y verificación en código
+
+- `server/metricas.ts` calcula palabras, títulos excluidos, segmentos y
+  proporciones por sección. Estos hechos viajan al prompt como datos cerrados:
+  el modelo no debe recalcularlos ni modificarlos.
+- `server/esquemaMapa.ts` define el mapa del documento
+  (`tesis_o_objetivo`, `secciones`, `ideas_anunciadas`). `normalizarMapa`
+  descarta índices duplicados o fuera de rango antes de cualquier uso.
+- `server/verificacion.ts` produce observaciones deterministas para ideas no
+  retomadas, ideas nuevas en la conclusión, desequilibrio, desarrollo corto y
+  documentos incompletos. Cada observación lleva `criterio_id` y `severidad`.
+- `server/rubricas/` mantiene una rúbrica por tipo de documento. Solo se envían
+  descripciones y objetivos de revisión: ninguna rúbrica contiene texto
+  sugerido ni reescrituras.
+- La fusión conserva `origen: 'modelo' | 'codigo' | 'fusionada'`. La etiqueta
+  visible es `codigo` sin tilde para que el valor sea idéntico en logs, JSON y
+  markdown.
+
+### Autoritatividad del documento incompleto
+
+- Cuando `seccion === 'documento'` y el tipo es ensayo o informe, si el código
+  detecta menos de tres párrafos o ausencia de estructura, se omite Gemini por
+  completo. El log registra `llamadas=0`.
+- En ese caso se devuelve una única observación de código con pregunta fija:
+  «¿Qué argumentos sostendrán la tesis que planteas en la introducción?». Las
+  observaciones del modelo se descartan, incluso si el modelo reporta
+  desequilibrio, idea no retomada o conclusión incoherente.
+- `introduccion` y `conclusion` siguen llamando al modelo aunque el documento
+  esté incompleto. `texto-abierto` queda fuera de esta regla.
+- Las preguntas guía tienen valores fijos por `tipo_problema` en
+  `src/lib/revisionTipos.ts`. Si el modelo pide redactar, escribir, reescribir o
+  reformular, la guarda sustituye la pregunta por la fija correspondiente. La
+  regla también está en el prompt común.
+- Esa decisión evita que una observación del modelo anulada por el código
+  reaparezca con otra redacción o con una pregunta que invita a escribir por el
+  autor, contradictiendo el rol de tutor a demanda.
+
+### Ruta de dos llamadas
+
+- Textos de hasta 12.000 caracteres siguen usando una sola llamada: el modelo
+  devuelve mapa y observaciones en un único objeto validado.
+- Textos más largos usan dos llamadas: primero un mapa corto
+  (`maxOutputTokens: 1.200`, plazo de 15 s), después las observaciones de la
+  sección solicitada. La segunda llamada recibe el mapa completo —que ya es un
+  resumen— y las verificaciones calculadas en código.
+- Para `introduccion` y `conclusion` se envían solo los párrafos que el mapa
+  asigna a esa sección, con su numeración original, hasta 12.000 caracteres. Si
+  no caben todos, aparece `[TEXTO RECORTADO]` y el prompt advierte que no se
+  invente contenido omitido.
+- Para `seccion: 'documento'` se envía el texto completo hasta el nuevo límite
+  de 30.000 caracteres. El límite se definió en `src/lib/revisionTipos.ts` para
+  que cliente y servidor usen el mismo número en el mensaje de error.
+- El plazo global del servidor es de 55 s y se reparte con un temporizador
+  compartido entre ambas llamadas. El cliente espera 60 s.
+
+### Reintentos
+
+- `server/reintento.ts` reintenta una sola vez y solo cuando el error tiene
+  `codigo: 'respuesta_invalida'` (Zod, párrafos fuera de rango o mapa sin
+  secciones). El reenvío usa el mismo prompt más una nota de corrección.
+- No se reintentan cuota, tiempo, servicio no disponible, configuración ni
+  errores de conexión. El presupuesto global es de tres llamadas por revisión,
+  repartido entre las dos fases; el SDK queda con `maxRetries: 0`.
+- Las tres llamadas a `generateText` (mapa, observaciones y única) pasan por
+  `ejecutarConTraduccion`. Ese envoltorio convierte `NoObjectGeneratedError` y
+  `TypeValidationError` en `ErrorRevision('respuesta_invalida')` **dentro** de
+  `llamada`, que es donde `ejecutarConReintento` puede ver el código. Antes, el
+  error del SDK escapaba sin `codigo` y solo se traducía en el `catch` externo,
+  demasiado tarde para reintentar.
+- Las pruebas inyectan la función de llamada: un fallo inválido produce dos
+  intentos, un error de cuota produce uno, dos fallos agotan el reintento y el
+  presupuesto agotado impide reintentar. Dos pruebas nuevas lanzan
+  `TypeValidationError` y `NoObjectGeneratedError` reales del SDK dentro del
+  envoltorio y comprueban que se reintenta.
+
+### Verificación semántica sobre texto real
+
+- `verificarSemantica` ya no compara las ideas anunciadas contra
+  `idea_principal` + `ideas_clave` del mapa: usa los tokens de los párrafos
+  reales de desarrollo y conclusión, seleccionados con `seccionesCalculo` y
+  tomados de `bloques.cuerpo`. El mapa sigue indicando qué párrafos pertenecen a
+  cada sección, pero sus resúmenes (máximo seis ideas clave) no sustituyen al
+  texto.
+- Con el mapa del smoke largo, la idea anunciada solo compartía `ident` y
+  `ejemp` con los resúmenes (2/10 = 0,2, justo en el umbral antiguo) pero
+  comparte nueve de diez tokens con el texto real. La conclusión parecía
+  introducir 11 de 18 tokens nuevos según el resumen; contra el texto real son
+  7 de 41 (0,17), por debajo del criterio de 0,5.
+- El umbral de retoma se subió temporalmente a 0,4, pero se restauró a 0,2 al
+  comprobar que 0,4 deja un margen de solo 0,10 con `documento-bueno.txt`. Con
+  texto real, `documento-muy-largo.txt` tiene 0,9 y el nuevo fixture con
+  sinónimos tiene 0,60 y 0,50, así que 0,2 basta para no disparar falsos
+  positivos sin subir el umbral.
+- La coherencia de la conclusión dejó de usar una proporción frágil (0,1) y
+  ahora exige al menos dos tokens compartidos con la tesis.
+- Se añadió una prueba con un mapa deliberadamente pobre y el fixture largo:
+  aunque `ideas_clave` diga solo «Resumen pobre», no se emiten
+  `idea_no_retomada` ni `idea_nueva_en_conclusion`.
+
+### Falsos positivos con sinónimos
+
+- `scripts/fixtures/documento-bueno-sinonimos.txt` tiene 358 palabras y cinco
+  párrafos. La conclusión retoma la constancia como disciplina, la rutina como
+  costumbre y la calma como serenidad: son sinónimos de la introducción, sin
+  temas nuevos.
+- El primer smoke con ese fixture emitió
+  `5:idea_nueva_en_conclusion:codigo` con `culti, palab, resul, fecun`. Los
+  solapamientos por idea fueron:
+  - «la repetición convierte la composición en una rutina manejable»: tokens
+    `compo, convi, manej, repet, rutin`; en desarrollo `repet, convi, rutin`
+    (0,60) y en conclusión `rutin` (0,20).
+  - «el hábito permite revisar con más calma lo que antes parecía definitivo»:
+    tokens `calma, defin, habit, parec, permi, revis`; en desarrollo
+    `revis, parec` (0,33) y en conclusión `revis, calma, defin` (0,50).
+- No se subió ningún umbral. El problema no es el porcentaje: el código compara
+  cadenas y no puede saber que `culti`, `palab` o `fecun` reexpresan conceptos
+  ya presentes. Subir el umbral de novedad habría silenciado también casos
+  reales como deserción escolar, costo del papel o bibliotecas en
+  `ensayo-prueba.txt`.
+- Ajuste aplicado: el código solo emite `idea_nueva_en_conclusion` y
+  `conclusion_incoherente` cuando la conclusión está poco anclada, es decir,
+  comparte menos de dos tokens (`UMBRAL_TOKENS_ANCLA_CONCLUSION`) con la tesis
+  o con las ideas anunciadas. La detección fina queda al modelo. La conclusión
+  con sinónimos comparte cinco tokens con la tesis y cuatro con lo anunciado;
+  `ensayo-prueba.txt` comparte cuatro con la tesis y varios más con lo
+  anunciado, pero el modelo sigue marcando ambos problemas.
+
+### Verificación realizada
+
+- `npm run typecheck`, `npm run lint` y `npm run build` pasan sin errores.
+- 27 pruebas unitarias pasan: métricas, verificación, falsos positivos del mapa
+  pobre, conclusión con sinónimos, conservadurismo del código, supervivencia de
+  observaciones del modelo, fusión autoritativa, guarda de preguntas, omisión
+  del modelo, reintentos con errores reales del SDK y rechazo 413.
+- Tres smokes consecutivos con `documento-solo-introduccion.txt` dan siempre
+  `llamadas=0`, una observación `desarrollo_corto` de origen `codigo` y la
+  pregunta fija.
+- Smoke con `documento-muy-largo.txt` (17.220 caracteres): dos llamadas y cero
+  observaciones. El mismo fixture duplicado supera 30.000 caracteres y la ruta
+  `/api/revisar` responde 413 con `codigo: 'texto_demasiado_largo'`.
+- Smoke con `documento-bueno.txt`: una llamada y cero observaciones, ninguna del
+  código.
+- Smoke con `documento-bueno-sinonimos.txt`: 358 palabras, una llamada y cero
+  observaciones, ninguna del código. Antes del ajuste emitió una
+  `idea_nueva_en_conclusion` de origen `codigo`.
+- Smoke con `ensayo-prueba.txt`: una llamada y dos observaciones de origen
+  `modelo`: `idea_no_retomada` en el párrafo 1 por las familias y
+  `idea_nueva_en_conclusion` en el párrafo 4. El código ya no emite ninguna en
+  ese fixture porque la conclusión está anclada; el modelo conserva ambas.
+
+### Límites conocidos
+
+- La segunda llamada recibe el mapa completo, no un resumen recalculado: para
+  documentos de 30.000 caracteres el mapa sigue siendo pequeño por el esquema,
+  pero no hay un presupuesto explícito de tokens para sus descripciones.
+- El recorte de sección cuenta caracteres de párrafo, no tokens reales ni el
+  coste de los nombres de campo del prompt.
+- Las verificaciones léxicas del código no detectan paráfrasis ni sinónimos: si
+  una conclusión comparte al menos dos tokens con la tesis o con lo anunciado,
+  el código no emite `idea_nueva_en_conclusion` ni `conclusion_incoherente`,
+  aunque aparezca un tema nuevo. Esa detección fina depende del modelo, por lo
+  que cambiar de proveedor o de prompt puede cambiar los resultados.
+- La caché del mapa, los IDs persistentes de párrafo y el resaltado en el editor
+  siguen pendientes de la Fase 6.
+- Sin commit de cierre: los cambios quedan pendientes de revisión manual.
