@@ -1,14 +1,31 @@
 import { Hono } from 'hono'
+import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { MENSAJES_ERROR_GRAMATICA } from '../src/lib/gramaticaTipos.ts'
 import { LIMITE_CARACTERES_TEXTO } from '../src/lib/revisionTipos.ts'
+import { comprobarConexion } from './db.ts'
+import type { VariablesApi } from './entorno.ts'
+import { ErrorApi } from './errores.ts'
 import { esquemaPeticionRevision } from './esquema.ts'
 import { validarPeticionGramatica } from './esquemaGramatica.ts'
 import { ErrorRevision, revisarConGemini } from './gemini.ts'
 import { ErrorGramatica, revisarConLanguageTool } from './languagetool.ts'
+import { rutasCuentas } from './rutasCuentas.ts'
+import { rutasDocumentos } from './rutasDocumentos.ts'
 
-export const app = new Hono()
+export const app = new Hono<{ Variables: VariablesApi }>()
 
 app.get('/api/salud', (c) => c.json({ ok: true, mensaje: 'hola' }))
+
+app.get('/api/salud/db', async (c) => {
+  await comprobarConexion()
+  return c.json({
+    ok: true,
+    mensaje: 'Conexión con PostgreSQL correcta.',
+  })
+})
+
+app.route('/api/auth', rutasCuentas)
+app.route('/api/documentos', rutasDocumentos)
 
 app.post('/api/revisar', async (c) => {
   let cuerpo: unknown
@@ -126,6 +143,13 @@ app.notFound((c) =>
 )
 
 app.onError((error, c) => {
+  if (error instanceof ErrorApi) {
+    return c.json(
+      { ok: false, codigo: error.codigo, mensaje: error.message },
+      error.estado as ContentfulStatusCode,
+    )
+  }
+
   if (error instanceof ErrorRevision) {
     return c.json(
       { ok: false, codigo: error.codigo, mensaje: error.message },

@@ -1,4 +1,9 @@
 import type { JSONContent } from '@tiptap/core'
+import { ErrorApi, solicitarJson } from './api'
+import type {
+  DocumentoApi,
+  DocumentoResumen,
+} from './documentosTipos'
 import { asegurarIdsContenido } from './parrafosIds'
 import type { PreferenciaTema } from './tema'
 import {
@@ -21,6 +26,8 @@ const VERSION_ACTUAL = 3
 const VERSION_SIN_TIPO_DOCUMENTO = 1
 const VERSION_SIN_IDS = 2
 
+export type { DocumentoResumen } from './documentosTipos'
+
 /**
  * Documento persistido. El contenido es siempre JSON de TipTap, nunca HTML ni
  * texto plano.
@@ -41,8 +48,7 @@ export type DocumentoGuardado = {
  * Resultado de la carga inicial.
  *
  * `esNuevo` indica si el documento se acaba de crear, para que la app pueda
- * mostrar la elección inicial del tipo de documento. Un documento migrado
- * desde la versión 1 no es nuevo.
+ * mostrar la elección inicial del tipo de documento.
  */
 export type ResultadoCargaDocumento = {
   documento: DocumentoGuardado
@@ -62,9 +68,11 @@ type DocumentoLeido = {
   requiereGuardado: boolean
 }
 
-function claveDocumento(id: string): string {
-  return `${PREFIJO_CLAVES}:documento:${id}`
-}
+/**
+ * La carga sin ID se memoiza para que StrictMode no cree dos documentos en el
+ * primer mount. Se invalida al cerrar sesión o al crear un documento nuevo.
+ */
+let cargaInicial: Promise<ResultadoCargaDocumento> | null = null
 
 function esObjeto(valor: unknown): valor is Record<string, unknown> {
   return typeof valor === 'object' && valor !== null
@@ -127,76 +135,86 @@ export function migrarDocumento(valor: unknown): DocumentoLeido | null {
   }
 }
 
-function crearDocumentoVacio(id: string): DocumentoGuardado {
-  const { contenido } = asegurarIdsContenido({
-    type: 'doc',
-    content: [{ type: 'paragraph' }],
-  })
-
-  return {
-    id,
-    version: VERSION_ACTUAL,
-    tipoDocumento: TIPO_DOCUMENTO_POR_DEFECTO,
-    contenido,
-    actualizadoEn: new Date().toISOString(),
-  }
-}
-
-function leerDocumento(id: string): DocumentoLeido | null {
-  const crudo = localStorage.getItem(claveDocumento(id))
-  if (!crudo) return null
-
+function leerDocumentoActual(): string | null {
   try {
-    const parseado: unknown = JSON.parse(crudo)
-    const leido = migrarDocumento(parseado)
-    if (!leido || leido.documento.id !== id) return null
-    return leido
+    const id = localStorage.getItem(CLAVE_DOCUMENTO_ACTUAL)
+    return id && id.length > 0 ? id : null
   } catch {
     return null
   }
 }
 
-async function cargarDocumentoInterno(): Promise<ResultadoCargaDocumento> {
-  const idActual = localStorage.getItem(CLAVE_DOCUMENTO_ACTUAL)
+function recordarDocumento(id: string): void {
+  try {
+    localStorage.setItem(CLAVE_DOCUMENTO_ACTUAL, id)
+  } catch {
+    // Si localStorage no está disponible, el documento sigue guardado en la
+    // base; solo se pierde el atajo al último documento abierto.
+  }
+}
 
-  if (idActual) {
-    const leido = leerDocumento(idActual)
-    if (leido) {
-      // Si venía de la versión 1, se reescribe ya migrado para no repetir la
-      // conversión en cada carga.
-      if (leido.requiereGuardado) {
-        await guardarDocumento(leido.documento)
-      }
+export function limpiarDocumentoActual(): void {
+  cargaInicial = null
 
-      return { documento: leido.documento, esNuevo: false }
-    }
+  try {
+    localStorage.removeItem(CLAVE_DOCUMENTO_ACTUAL)
+  } catch {
+    // Nada que limpiar si localStorage está bloqueado.
+  }
+}
+
+function aDocumentoGuardado(api: DocumentoApi): DocumentoLeido {
+  const leido = migrarDocumento({
+    id: api.id,
+    version: api.version,
+    tipoDocumento: api.tipoDocumento,
+    contenido: api.contenido as JSONContent,
+    actualizadoEn: api.actualizadoEn,
+  })
+
+  if (!leido) {
+    throw new ErrorApi(
+      'respuesta_invalida',
+      502,
+      'El servidor devolvió un documento con un formato no válido.',
+    )
   }
 
-  const nuevo = crearDocumentoVacio(crypto.randomUUID())
-  await guardarDocumento(nuevo)
-  return { documento: nuevo, esNuevo: true }
+  return leido
+}
+
+async function cargarDocumentoPorId(id: string): Promise<DocumentoGuardado> {
+  const respuesta = await solicitarJson<{ documento: DocumentoApi }>(
+    `/api/documentos/${encodeURIComponent(id)}`,
+  )
+  const leido = aDocumentoGuardado(respuesta.documento)
+
+  if (leido.requiereGuardado) {
+    await guardarDocumento(leido.documento)
+  }
+
+  recordarDocumento(id)
+  return leido.documento
 }
 
 /**
- * La carga inicial se memoiza durante la sesión.
+ * Carga un documento por ID.
  *
- * React StrictMode monta los efectos dos veces en desarrollo: sin esta caché,
- * la segunda llamada encontraría el documento recién creado por la primera y
- * respondería `esNuevo: false`, ocultando el diálogo de tipo de documento.
- * Si la carga falla, se olvida la promesa para permitir un reintento.
+ * Sin ID usa el puntero de localStorage; si no existe o ya no es accesible,
+ * abre el documento más reciente o crea uno vacío.
  */
-let cargaInicial: Promise<ResultadoCargaDocumento> | null = null
+export function cargarDocumento(
+  id?: string,
+): Promise<ResultadoCargaDocumento> {
+  if (id) {
+    return cargarDocumentoPorId(id).then((documento) => ({
+      documento,
+      esNuevo: false,
+    }))
+  }
 
-/**
- * Carga el documento actual. Si es la primera visita, crea uno vacío con un ID
- * único y lo persiste antes de devolverlo.
- *
- * La firma es asíncrona a propósito: hoy usa localStorage, pero puede
- * sustituirse por IndexedDB o una base de datos sin cambiar a los consumidores.
- */
-export function cargarDocumento(): Promise<ResultadoCargaDocumento> {
   if (!cargaInicial) {
-    cargaInicial = cargarDocumentoInterno().catch((error: unknown) => {
+    cargaInicial = cargarDocumentoInicial().catch((error: unknown) => {
       cargaInicial = null
       throw error
     })
@@ -205,20 +223,93 @@ export function cargarDocumento(): Promise<ResultadoCargaDocumento> {
   return cargaInicial
 }
 
+async function cargarDocumentoInicial(): Promise<ResultadoCargaDocumento> {
+  const idActual = leerDocumentoActual()
+
+  if (idActual) {
+    try {
+      return {
+        documento: await cargarDocumentoPorId(idActual),
+        esNuevo: false,
+      }
+    } catch (error) {
+      if (!(error instanceof ErrorApi) || error.estado !== 404) throw error
+    }
+  }
+
+  const documentos = await listarDocumentos()
+
+  if (documentos.length > 0) {
+    return {
+      documento: await cargarDocumentoPorId(documentos[0]!.id),
+      esNuevo: false,
+    }
+  }
+
+  return { documento: await crearDocumento(), esNuevo: true }
+}
+
 /**
- * Persiste el documento completo y lo marca como documento actual.
+ * Guarda el contenido y el tipo del documento en la API.
  *
- * Se escribe primero el documento y después el puntero, para que un fallo a
- * mitad de la operación no deje el puntero apuntando a un documento inexistente.
+ * El ID forma parte de la URL: aunque una petición llegue tarde, el servidor
+ * solo puede escribir en ese documento y comprueba que pertenece al usuario de
+ * la sesión.
  */
 export async function guardarDocumento(
   documento: DocumentoGuardado,
 ): Promise<void> {
-  localStorage.setItem(
-    claveDocumento(documento.id),
-    JSON.stringify(documento),
+  await solicitarJson(`/api/documentos/${encodeURIComponent(documento.id)}/contenido`, {
+    method: 'PUT',
+    body: JSON.stringify({
+      contenido: documento.contenido,
+      tipoDocumento: documento.tipoDocumento,
+    }),
+  })
+
+  recordarDocumento(documento.id)
+}
+
+export async function listarDocumentos(): Promise<DocumentoResumen[]> {
+  const respuesta = await solicitarJson<{ documentos: DocumentoResumen[] }>(
+    '/api/documentos',
   )
-  localStorage.setItem(CLAVE_DOCUMENTO_ACTUAL, documento.id)
+  return respuesta.documentos
+}
+
+export async function crearDocumento(opciones: {
+  titulo?: string
+  tipoDocumento?: TipoDocumentoId
+} = {}): Promise<DocumentoGuardado> {
+  const respuesta = await solicitarJson<{ documento: DocumentoApi }>(
+    '/api/documentos',
+    {
+      method: 'POST',
+      body: JSON.stringify(opciones),
+    },
+  )
+
+  const { documento } = aDocumentoGuardado(respuesta.documento)
+  recordarDocumento(documento.id)
+  return documento
+}
+
+export async function renombrarDocumento(
+  id: string,
+  titulo: string,
+): Promise<void> {
+  await solicitarJson(`/api/documentos/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ titulo }),
+  })
+}
+
+export async function borrarDocumento(id: string): Promise<void> {
+  await solicitarJson(`/api/documentos/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  })
+
+  if (leerDocumentoActual() === id) limpiarDocumentoActual()
 }
 
 /**

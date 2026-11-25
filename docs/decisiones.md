@@ -833,3 +833,94 @@ Quedan fuera del alcance de la Fase 5 y se retoman más adelante:
 - La caché del mapa, los IDs persistentes de párrafo y el resaltado en el editor
   siguen pendientes de la Fase 6.
 - Sin commit de cierre: los cambios quedan pendientes de revisión manual.
+
+## Fase 6 — Integración con el editor (2026-11-24)
+
+### IDs persistentes y formato v3
+
+- El documento pasa a la versión 3: cada bloque recibe un `parrafoId` UUID
+  guardado en `attrs`. La migración v2→v3 se aplica al cargar y repara IDs
+  ausentes o duplicados sin cambiar el texto.
+- La extensión `ParrafoId` asigna IDs a bloques nuevos (por ejemplo, al pulsar
+  Enter) y repara los que falten. La transacción se marca sin historial y con
+  `preventUpdate` para no disparar autoguardado ni gramática.
+- `extraerParrafosConId` toma el texto y la foto de IDs en una sola lectura. El
+  `parrafo_id` numérico del servidor se traduce al `parrafoId` del bloque, así
+  que un cambio de posición o de contenido no descoloca el resaltado.
+
+### Resaltado y navegación
+
+- `ObservacionesDecoraciones` usa `Decoration.node` sobre el bloque, no marks ni
+  texto. El color depende de la severidad y el bloque conserva intacto su JSON.
+- Solo la revisión más reciente pinta el documento; las tarjetas anteriores
+  quedan como historial. Una revisión sin problemas limpia los resaltados.
+- Al pulsar una tarjeta, el editor enfoca y desplaza el bloque; al pulsar un
+  bloque resaltado, se marca la tarjeta correspondiente. «Quitar resaltados»
+  oculta la revisión actual sin borrar el chat.
+- Si hay varias observaciones sobre el mismo bloque, se muestra la de mayor
+  severidad.
+
+### Límites conocidos
+
+- No hay caché del mapa del documento: las revisiones largas vuelven a pedirlo
+  al modelo. La caché implementada en esta fase es solo la de gramática.
+- El chat y los resaltados viven en memoria; se pierden al recargar.
+- La navegación entre errores no tiene atajos de teclado propios.
+
+## Fase 7 — Pruebas y pulido (2026-11-24)
+
+### Reintentos y errores
+
+- Se reintenta una sola vez un `503 servicio_no_disponible`, tras 1,5 s y
+  dentro del plazo global de 55 s. `GEMINI_MODEL_RESPALDO` es opcional y solo se
+  usa en ese segundo intento.
+- No se reintentan cuota, configuración, timeout, conexión ni otros 5xx.
+- Los errores de validación del SDK (`TypeValidationError`,
+  `NoObjectGeneratedError`) se traducen dentro de la llamada para que el
+  reintento por `respuesta_invalida` pueda actuar.
+- Los mensajes de error del tutor y de gramática se traducen a textos en
+  español; la interfaz mantiene estados de carga y no bloquea la escritura.
+
+### Pruebas
+
+- Las pruebas inyectan la función de llamada y usan `esperaMs: 0`, así que no
+  dependen de temporizadores reales ni de la red.
+- Se añadieron fixtures de documento bueno, largo, con sinónimos y solo con
+  introducción para comprobar falsos positivos y límites.
+- `npm run typecheck`, `npm run lint` y `npm run build` forman la verificación
+  mínima de cada cambio.
+
+### Límites conocidos
+
+- La suite automatizada no cubre la interfaz ni llamadas reales a Gemini; los
+  smokes manuales consumen cuota.
+- Sin commit de cierre: los cambios quedan pendientes de revisión manual.
+
+## Fase 8 — Cuentas y documentos múltiples (en curso)
+
+### Pasos 1–3 implementados
+
+- PostgreSQL local con `pg`. `db/schema.sql` define `usuarios`, `sesiones` y
+  `documentos`; se aplica con `npm run db:init` y es idempotente.
+- Contraseñas con `scrypt` (sal aleatoria y `timingSafeEqual`). La sesión usa
+  una cookie `httpOnly`, `SameSite=Lax` y 7 días; en la base solo se guarda un
+  HMAC del token firmado con `SESSION_SECRET`.
+- Registro, login, logout y `GET /api/auth/yo`. El login devuelve el mismo error
+  para correo inexistente y contraseña incorrecta.
+- API de documentos con listar, crear, leer, renombrar, guardar contenido y
+  borrar. Todas las consultas filtran por el usuario de la sesión.
+- `src/lib/storage.ts` habla con la API; localStorage solo conserva el tema y
+  el puntero al último documento.
+
+### Límites conocidos de estos pasos
+
+- `/api/revisar` y `/api/gramatica` siguen siendo públicas, por decisión
+  explícita: no exigen sesión ni tienen cuota por usuario. En local se acepta;
+  para producción habría que protegerlas y limitar su uso.
+- La interfaz todavía no tiene pantalla de cuenta ni de documentos; hasta el
+  paso 4 la app no puede cargar el editor a través de la API.
+- La importación del documento antiguo de localStorage queda pendiente y solo
+  se hará si se solicita.
+- Sin recuperación de contraseña, verificación por correo, roles, uso
+  compartido ni despliegue.
+- Sin commit de cierre: los cambios quedan pendientes de revisión manual.
