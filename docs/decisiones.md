@@ -989,3 +989,59 @@ Quedan fuera del alcance de la Fase 5 y se retoman más adelante:
 - Sin recuperación de contraseña, verificación por correo, roles, uso
   compartido ni despliegue.
 - Sin commit de cierre: los cambios quedan pendientes de revisión manual.
+
+## Fase 9 (extra) — Barra de herramientas ampliada (2026-11-25)
+
+### Pasos 1 y 2 implementados
+
+- Se instalaron, con versión exacta, `@tiptap/extension-subscript@3.32.0`,
+  `@tiptap/extension-superscript@3.32.0`,
+  `@tiptap/extension-text-style@3.32.0` y
+  `@tiptap/extension-text-align@3.32.0`. El latest publicado es 3.35.0, pero se
+  fijó 3.32.0 para igualar al resto de TipTap, como en la Fase 1.
+- `StarterKit@3.32.0` ya registra `strike`, `blockquote`, `horizontalRule` y
+  `link`; no se instalaron paquetes duplicados. `@tiptap/extension-text-style`
+  exporta `TextStyle`, `FontFamily` y `FontSize` desde el mismo paquete, así que
+  tampoco hicieron falta `@tiptap/extension-font-family` ni
+  `@tiptap/extension-font-size` (este último no tiene versión 3.32.0 estable).
+- El menú de tipo de letra usa seis pilas locales: Georgia, Times New Roman,
+  Arial, Verdana, Tahoma y Courier New. No se cargan fuentes externas ni CDN.
+- El menú de tamaño ofrece de 10 a 36 pt. El valor por defecto **no aplica
+  marca**, por lo que la hoja conserva su `1.0625rem` (17 px) actual; 12 pt
+  queda como opción explícita. Esto responde al ajuste de no cambiar
+  notablemente el tamaño visual de la hoja.
+- «Limpiar formato» ejecuta `unsetAllMarks().unsetTextAlign()`. No se usa
+  `clearNodes()`: así no se pierde `parrafoId` ni se altera la estructura de
+  títulos y listas. Es un límite deliberado de esta fase.
+- `TextAlign` se configuró solo para `paragraph` e `heading`. La cita y la línea
+  horizontal usan los comandos que ya traía StarterKit.
+- La barra mantiene `flex-wrap`, agrupa fuente/tamaño → marcas de carácter →
+  títulos → listas → alineación/cita/línea → deshacer/rehacer, y usa tooltips,
+  `aria-label` y `aria-pressed` en español. Los menús son `<select>` nativos y
+  muestran «Varios» cuando la selección mezcla valores.
+- La cabecera sigue fija en `top-14`; un `ResizeObserver` publica su altura real
+  en `--altura-cabecera-editor` y el resaltado de observaciones calcula
+  `scroll-margin-top` con ese valor. Así el wrap de la barra y el botón
+  «Quitar resaltados» no tapan el párrafo señalado desde el chat.
+- No se tocó el backend, `/api/*`, el tutor, `storage.ts` ni la versión del
+  documento. Solo aparecen marcas y atributos nuevos en el JSON de TipTap;
+  `getText()` y la extracción de párrafos con ID siguen leyendo el mismo texto.
+- El Paso 3 (color, resaltador y enlace) queda fuera por decisión explícita.
+
+### Pruebas añadidas
+
+- `scripts/prueba-barra-formato.ts` comprueba que `getText()` es idéntico con y
+  sin marcas de formato, que un documento con cita, lista con viñetas y lista
+  numerada conserva la correspondencia entre `parrafo_id` y los bloques de
+  nivel superior, y que un `parrafo_id: 3` produce una decoración exactamente
+  sobre la lista señalada.
+- Verificación: `npm run typecheck`, `npm run lint`, `npm run build`,
+  `npm run test:cuentas` y la suite completa (73 pruebas) pasan sin errores.
+- La build avisa del chunk de ~786 kB (241 kB gzip) por el peso de TipTap; el
+  code splitting sigue pendiente y no se aborda en esta fase.
+
+### Límites conocidos
+
+- Las fuentes dependen de que el sistema operativo las tenga instaladas.
+- «Limpiar formato» no convierte encabezados ni listas en párrafos normales.
+- Sin commit de cierre: los cambios quedan pendientes de revisión manual.

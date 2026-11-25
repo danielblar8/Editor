@@ -86,4 +86,4 @@ ideas nuevas en la conclusión, desequilibrio entre secciones.
 - No pegues archivos completos: indica ruta y qué cambió.
 - Ignora package-lock.json, dist/ y node_modules/.
 
-## Fase actual: 8
+## Fase actual: 9 (extra: barra de herramientas ampliada)

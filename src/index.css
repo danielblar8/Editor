@@ -189,6 +189,24 @@ body {
   @apply underline underline-offset-2;
 }
 
+.contenido-editor s {
+  text-decoration-thickness: 1px;
+}
+
+.contenido-editor sub,
+.contenido-editor sup {
+  font-size: 0.75em;
+  line-height: 0;
+}
+
+.contenido-editor sub {
+  vertical-align: sub;
+}
+
+.contenido-editor sup {
+  vertical-align: super;
+}
+
 .contenido-editor blockquote {
   @apply my-4 border-l-4 border-line pl-4 text-muted italic;
 }
@@ -248,7 +266,9 @@ body {
   @apply relative rounded-sm;
   background-color: var(--obs-fondo);
   box-shadow: inset 4px 0 0 var(--obs-color);
-  scroll-margin-top: 8rem;
+  /* EditorTexto publica la altura real de la cabecera: la barra hace wrap en
+     pantallas estrechas y puede crecer cuando aparece «Quitar resaltados». */
+  scroll-margin-top: calc(3.5rem + var(--altura-cabecera-editor, 6rem) + 1rem);
 }
 
 .contenido-editor .observacion-tutor--alta {

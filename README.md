@@ -41,7 +41,7 @@ secreto de sesión viven **solo** en el servidor:
 
 ```env
 GEMINI_API_KEY=tu_clave_aqui
-GEMINI_MODEL=gemini-2.5-flash
+GEMINI_MODEL=gemini-3.5-flash-lite
 LANGUAGETOOL_URL=https://api.languagetool.org
 DATABASE_URL=postgresql://postgres:tu_contrasena@localhost:5432/editor_tutor
 SESSION_SECRET=una_cadena_aleatoria_de_al_menos_32_caracteres
@@ -224,6 +224,127 @@ node --import tsx --test scripts/prueba-gramatica.ts
 
 Si el pie muestra `Gramática no disponible`, revisa que `LANGUAGETOOL_URL` sea
 accesible. Tras un 429, el cliente espera 60 s antes de reintentar.
+
+## Agente completo (Fase 5)
+
+- **Verificaciones en código**: antes de llamar al modelo, el servidor calcula
+  palabras por sección, proporciones entre introducción, desarrollo y
+  conclusión, y detecta ideas anunciadas que no se retoman, ideas nuevas en la
+  conclusión, desequilibrio entre secciones y desarrollo corto. Estos datos
+  viajan al prompt como hechos cerrados que el modelo no debe recalcular.
+- **Mapa del documento**: el modelo extrae la tesis u objetivo, las secciones y
+  las ideas que anuncia la introducción. Se valida con Zod y se descartan
+  índices duplicados o fuera de rango.
+- **Rúbricas por tipo de documento**: ensayo argumentativo, reporte de
+  investigación y texto abierto tienen cada uno sus criterios de revisión.
+  Las rúbricas solo describen qué evaluar; no contienen texto sugerido.
+- **Origen de cada observación**: las observaciones se fusionan y quedan
+  etiquetadas como `modelo`, `codigo` o `fusionada`.
+- **Documento incompleto**: si se pide revisar el documento completo (ensayo o
+  reporte) y tiene menos de tres párrafos o no tiene estructura, el servidor
+  responde sin llamar a Gemini, con una observación de desarrollo corto y una
+  pregunta fija. «Revisa mi introducción» y «Revisa la conclusión» sí llaman al
+  modelo, y el texto abierto queda fuera de esta regla.
+- **Preguntas guía controladas**: cada tipo de problema tiene una pregunta fija
+  como respaldo. Si el modelo propone una pregunta que invita a redactar o
+  reescribir, se sustituye por la fija.
+- **Textos largos**: hasta 12.000 caracteres se resuelve en una sola llamada.
+  Entre 12.000 y 30.000 se usan dos: primero un mapa corto y después las
+  observaciones de la sección pedida. El límite por revisión sube a
+  **30.000 caracteres** (antes 12.000).
+- **Plazos**: el servidor espera como máximo 55 s por revisión y el cliente
+  60 s. Una respuesta inválida se reintenta una vez; el presupuesto es de tres
+  llamadas por revisión.
+- **Límites conocidos**: las verificaciones léxicas no detectan sinónimos ni
+  paráfrasis, así que la detección fina de ideas nuevas y de coherencia depende
+  del modelo. Cambiar de modelo o de prompt puede cambiar los resultados.
+
+### Cómo probar el agente completo
+
+1. Ejecuta `npm run dev`, abre la app y pega `scripts/fixtures/ensayo-prueba.txt`
+   con el tipo **Ensayo Argumentativo**.
+2. Pulsa «¿Hay huecos en mi argumento?»: debe señalar la idea no retomada de la
+   introducción y las ideas nuevas de la conclusión.
+3. Pega `documento-bueno.txt`: debe responder que no encontró problemas.
+4. Pega `documento-solo-introduccion.txt` y pide la revisión completa: una sola
+   observación de desarrollo corto con la pregunta fija. En la terminal del
+   servidor debe aparecer `llamadas=0`.
+5. Pega `documento-muy-largo.txt` (unos 17.000 caracteres): usa dos llamadas y
+   puede tardar hasta casi un minuto.
+
+Pruebas automatizadas:
+
+```bash
+node --import tsx --test scripts/prueba-*.ts
+```
+
+## Resaltado en el editor (Fase 6)
+
+- **IDs de párrafo persistentes**: cada bloque del documento tiene un
+  identificador estable (`data-parrafo-id`) que se guarda con el documento. No
+  altera el texto visible ni el que lee el tutor. Los documentos antiguos se
+  migran al formato actual sin perder contenido.
+- **Resaltado de observaciones**: al recibir una revisión, el editor resalta
+  los párrafos señalados mediante decoraciones, sin modificar el documento ni
+  disparar el autoguardado. El resaltado usa fondo y borde, no solo color, y
+  funciona en tema claro y oscuro.
+- **Solo la última revisión**: cada revisión nueva reemplaza los resaltados
+  anteriores. Si la revisión no encuentra problemas, el editor queda limpio. Las
+  tarjetas anteriores se conservan en el chat como historial.
+- **De la tarjeta al párrafo**: al pulsar una tarjeta, el editor se desplaza al
+  párrafo y lo destaca unos segundos, sin mover el cursor. Cada tarjeta tiene
+  además un botón «Ver en el texto» para teclado y lectores de pantalla.
+- **Del párrafo a la tarjeta**: al pulsar un párrafo resaltado se marca la
+  tarjeta correspondiente en el chat.
+- **Quitar resaltados**: un botón en el chat los quita; una revisión nueva los
+  vuelve a mostrar. Si se edita un párrafo resaltado, el resaltado se conserva;
+  si se borra, desaparece.
+- **Animaciones**: el énfasis respeta la preferencia del sistema de reducir
+  movimiento.
+- **Límites**: un párrafo borrado deja su tarjeta sin destino. Los comandos del
+  chat siguen siendo simples (introducción, conclusión o documento completo) y
+  no hay caché del mapa del documento.
+
+### Cómo probar el resaltado
+
+1. Pega `ensayo-prueba.txt` y pulsa «¿Hay huecos en mi argumento?»: se
+   resaltan los párrafos de la introducción y de la conclusión.
+2. Pulsa una tarjeta: el editor se desplaza al párrafo correcto.
+3. Pulsa un párrafo resaltado: se marca su tarjeta en el chat.
+4. Pulsa «Revisa mi introducción»: solo debe quedar resaltada la introducción.
+5. Prueba con una lista y un título en el texto: el resaltado cae en el bloque
+   correcto.
+6. Pulsa «Quitar resaltados» y comprueba que desaparecen. Revisa que el texto,
+   el contador y el estado «Guardado» no cambien al resaltar.
+
+## Fiabilidad ante fallos del modelo (Fase 7)
+
+- **Reintento ante 503**: si Gemini responde «servicio no disponible» (503), el
+  servidor espera 1,5 s y reintenta una vez. No se reintentan los errores de
+  cuota (429), de configuración ni otros fallos del servicio.
+- **Modelo de respaldo opcional**: si `GEMINI_MODEL_RESPALDO` está definido en
+  `.env`, ese reintento usa el modelo de respaldo. Si no está definido, se
+  reintenta con el modelo principal.
+- **Plazos intactos**: el reintento respeta el plazo de 55 s y el presupuesto de
+  tres llamadas por revisión; si el plazo ya venció, no se reintenta.
+- **Registro**: el servidor deja en la consola una línea cuando usa el modelo de
+  respaldo, sin texto del documento ni claves.
+- **Límites**: sigue sin haber rate limit propio ni cuota por usuario. La capa
+  gratuita de Gemini puede devolver 429 o saturarse en horas de mucha demanda.
+  La gramática todavía no muestra un aviso de privacidad en la interfaz, y el
+  tamaño del paquete del frontend (~667 kB) queda pendiente de optimizar.
+
+### Cómo probar la fiabilidad
+
+1. Define en `.env` `GEMINI_MODEL_RESPALDO` con un modelo distinto del
+   principal y reinicia `npm run dev`.
+2. Haz varias revisiones. Si ocurre un 503, en la terminal del servidor se verá
+   `Llamada 1/3`, luego el aviso del modelo de respaldo y `Llamada 2/3`.
+3. Pruebas automatizadas del reintento:
+
+```bash
+node --import tsx --test scripts/prueba-reintento.ts
+```
 
 ## Cuentas y documentos (Fase 8)
 
