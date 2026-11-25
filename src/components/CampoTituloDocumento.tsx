@@ -4,6 +4,7 @@ import { LIMITE_TITULO, TITULO_POR_DEFECTO } from '../lib/documentosTipos'
 type CampoTituloDocumentoProps = {
   titulo: string
   onGuardar: (titulo: string) => Promise<void>
+  onCancelar?: () => void
 }
 
 type EstadoTitulo = 'inactivo' | 'guardando' | 'guardado' | 'error'
@@ -18,6 +19,7 @@ type EstadoTitulo = 'inactivo' | 'guardando' | 'guardado' | 'error'
 export function CampoTituloDocumento({
   titulo,
   onGuardar,
+  onCancelar,
 }: CampoTituloDocumentoProps) {
   const [valor, setValor] = useState(titulo)
   const [estado, setEstado] = useState<EstadoTitulo>('inactivo')
@@ -123,6 +125,7 @@ export function CampoTituloDocumento({
             evento.currentTarget.blur()
           } else if (evento.key === 'Escape') {
             cancelarRef.current = true
+            onCancelar?.()
             evento.currentTarget.blur()
           }
         }}

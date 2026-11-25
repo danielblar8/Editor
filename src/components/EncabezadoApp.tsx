@@ -12,6 +12,7 @@ type EncabezadoAppProps = {
   botonChatRef: RefObject<HTMLButtonElement | null>
   temaResuelto: TemaResuelto
   onCambiarTema: (preferencia: PreferenciaTema) => TemaResuelto
+  ocupado?: boolean
   onAbrirDocumentos: () => void
   onCerrarSesion: () => void
 }
@@ -24,6 +25,7 @@ export function EncabezadoApp({
   botonChatRef,
   temaResuelto,
   onCambiarTema,
+  ocupado = false,
   onAbrirDocumentos,
   onCerrarSesion,
 }: EncabezadoAppProps) {
@@ -33,9 +35,11 @@ export function EncabezadoApp({
         <button
           type="button"
           onClick={onAbrirDocumentos}
+          disabled={ocupado}
+          aria-busy={ocupado}
           aria-label="Mis documentos"
           title="Mis documentos"
-          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md px-2.5 text-sm font-medium text-muted transition-colors hover:bg-surface-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+          className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md px-2.5 text-sm font-medium text-muted transition-colors hover:bg-surface-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60"
         >
           <svg
             viewBox="0 0 24 24"
@@ -109,9 +113,11 @@ export function EncabezadoApp({
           <button
             type="button"
             onClick={onCerrarSesion}
+            disabled={ocupado}
+            aria-busy={ocupado}
             aria-label="Cerrar sesión"
             title="Cerrar sesión"
-            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md px-2.5 text-sm font-medium text-muted transition-colors hover:bg-surface-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+            className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md px-2.5 text-sm font-medium text-muted transition-colors hover:bg-surface-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus disabled:cursor-not-allowed disabled:opacity-60"
           >
             <svg
               viewBox="0 0 24 24"

@@ -940,6 +940,39 @@ Quedan fuera del alcance de la Fase 5 y se retoman más adelante:
 - Verificación: `npm run typecheck`, `npm run lint`, `npm run build`,
   `npm run test:cuentas` y la suite completa (70 pruebas) pasan.
 
+### Paso 5: pulido del cambio de documento
+
+- `EditorTexto` serializa los guardados con una cadena de promesas. Cada llamada
+  a `persistir` cancela el temporizador del debounce, espera al guardado en curso
+  y vuelve a comprobar si queda contenido pendiente. Devuelve `true` solo si no
+  había nada que escribir o si la escritura terminó bien.
+- La salida usa `guardarAhora`, expuesto a `VistaEditor` mediante
+  `onGuardarListo`. Antes de navegar se espera también el renombrado en curso;
+  si el contenido o el título fallaron (incluso en un intento anterior), la
+  vista no cambia y muestra un aviso. Escape en el título descarta el cambio y
+  limpia ese bloqueo.
+- `guardarDocumento` sigue siendo el único camino de escritura del frontend y
+  siempre incluye el ID en la URL (`/api/documentos/:id/contenido`). El servidor
+  filtra por la sesión, así que un guardado tardío de otro documento no puede
+  escribir en el documento abierto.
+- El cambio de tipo **ya se guardaba de inmediato** en `EditorTexto` antes de
+  este paso: el efecto compara `tipoPersistidoRef` y llama a `persistir(editor,
+  true)` sin esperar al debounce. Se corrigió el reporte del paso 4, que decía
+  lo contrario.
+- La revisión del tutor acepta un `AbortSignal` (`chat.ts`). `useChatTutor`
+  crea un controlador por envío, aborta al desmontarse e ignora el resultado si
+  la señal se canceló o el hook ya no está montado. No se tocó el backend ni
+  `/api/revisar`.
+- `useGramatica` ya llamaba a `detener()`, que aborta la petición en curso, y
+  `VistaEditor` se monta con `key={idDocumento}`: chat, resaltados y gramática
+  se reinician al cambiar de documento sin cambios adicionales.
+- El pie conserva `Guardando…`, `Guardado` y `No se pudo guardar`. Con la API
+  caída, `solicitarJson` lanza `ErrorApi('sin_conexion')` y el estado pasa a
+  error; el botón `Reintentar` vuelve a intentar y recupera el estado
+  `Guardado` cuando la conexión vuelve.
+- Verificación: `npm run typecheck`, `npm run lint`, `npm run build`,
+  `npm run test:cuentas` y la suite completa pasan.
+
 ### Límites conocidos de estos pasos
 
 - `/api/revisar` y `/api/gramatica` siguen siendo públicas, por decisión
@@ -947,8 +980,10 @@ Quedan fuera del alcance de la Fase 5 y se retoman más adelante:
   para producción habría que protegerlas y limitar su uso.
 - El título se guarda en una petición aparte del contenido: si falla la red al
   renombrar, la hoja muestra el error y conserva el valor anterior.
-- El cambio de tipo de documento se persiste en el siguiente autoguardado; no
-  hay botón explícito de guardar.
+- No hay botón explícito de guardar: el contenido se guarda solo con el
+  debounce de 1 s y el tipo al cambiarlo.
+- Si el guardado falla, la navegación queda bloqueada para no perder cambios.
+  El usuario puede reintentar o esperar a que vuelva la conexión.
 - La importación del documento antiguo de localStorage queda pendiente y solo
   se hará si se solicita.
 - Sin recuperación de contraseña, verificación por correo, roles, uso

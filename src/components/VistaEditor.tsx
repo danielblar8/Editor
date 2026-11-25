@@ -12,7 +12,6 @@ import { extraerParrafosConId, unirParrafos } from '../lib/parrafos'
 import type { DocumentoGuardado } from '../lib/storage'
 import {
   cargarDocumento,
-  guardarDocumento,
   renombrarDocumento,
 } from '../lib/storage'
 import type { PreferenciaTema, TemaResuelto } from '../lib/tema'
@@ -62,8 +61,13 @@ export function VistaEditor({
   const [enfocarChatAlAbrir, setEnfocarChatAlAbrir] = useState(false)
   const [foco, setFoco] = useState<FocoObservacion | null>(null)
   const [revisionOculta, setRevisionOculta] = useState<string | null>(null)
+  const [saliendo, setSaliendo] = useState(false)
+  const [avisoGuardado, setAvisoGuardado] = useState<string | null>(null)
   const botonChatRef = useRef<HTMLButtonElement>(null)
   const editorRef = useRef<Editor | null>(null)
+  const guardarRef = useRef<(() => Promise<boolean>) | null>(null)
+  const tituloEnCursoRef = useRef<Promise<void> | null>(null)
+  const tituloFallidoRef = useRef(false)
   const secuenciaFocoRef = useRef(0)
 
   const obtenerDocumento = useCallback(() => {
@@ -83,6 +87,13 @@ export function VistaEditor({
   const registrarEditor = useCallback((editor: Editor | null) => {
     editorRef.current = editor
   }, [])
+
+  const registrarGuardado = useCallback(
+    (guardar: (() => Promise<boolean>) | null) => {
+      guardarRef.current = guardar
+    },
+    [],
+  )
 
   const chat = useChatTutor(tipoDocumento, obtenerDocumento)
   const idRevisionActual = obtenerIdUltimaRevision(chat.mensajes)
@@ -185,44 +196,91 @@ export function VistaEditor({
     setDialogoInicialAbierto(false)
   }
 
+  const limpiarFalloTitulo = useCallback(() => {
+    // Escape descarta la edición: vuelve al último título guardado, así que ya
+    // no hay cambios que bloqueen la salida.
+    tituloFallidoRef.current = false
+  }, [])
+
   const guardarTitulo = useCallback(
     async (nuevo: string) => {
       if (!documento) return
 
-      try {
+      tituloFallidoRef.current = false
+      const peticion = (async () => {
         const actualizado = await renombrarDocumento(documento.id, nuevo)
         setTitulo(actualizado.titulo)
+      })()
+
+      tituloEnCursoRef.current = peticion
+
+      try {
+        await peticion
       } catch (fallo) {
+        tituloFallidoRef.current = true
         if (esErrorNoAutenticado(fallo)) onSesionExpirada()
         throw fallo
+      } finally {
+        if (tituloEnCursoRef.current === peticion) {
+          tituloEnCursoRef.current = null
+        }
       }
     },
     [documento, onSesionExpirada],
   )
 
-  const guardarAntesDeSalir = useCallback(async () => {
-    const editor = editorRef.current
-    if (!editor || editor.isDestroyed || !documento) return
+  /**
+   * Espera al guardado de contenido y al de título que ya estén en curso.
+   * Devuelve `false` si alguno falla para que la navegación no pierda cambios.
+   */
+  const guardarAntesDeSalir = useCallback(async (): Promise<boolean> => {
+    const guardar = guardarRef.current
+    const titulo = tituloEnCursoRef.current
 
-    try {
-      await guardarDocumento({
-        ...documento,
-        contenido: editor.getJSON(),
-        tipoDocumento,
-        actualizadoEn: new Date().toISOString(),
-      })
-    } catch {
-      // El autoguardado ya muestra el error; no bloqueamos la salida.
-    }
-  }, [documento, tipoDocumento])
+    const [contenidoOk, tituloOk] = await Promise.all([
+      guardar ? guardar() : Promise.resolve(true),
+      titulo
+        ? titulo.then(
+            () => true,
+            () => false,
+          )
+        : Promise.resolve(true),
+    ])
+
+    return contenidoOk && tituloOk && !tituloFallidoRef.current
+  }, [])
 
   const volverADocumentos = useCallback(async () => {
-    await guardarAntesDeSalir()
+    setSaliendo(true)
+    setAvisoGuardado(null)
+
+    const guardadoOk = await guardarAntesDeSalir()
+    setSaliendo(false)
+
+    if (!guardadoOk) {
+      setAvisoGuardado(
+        'No se pudo guardar el documento. Revisa la conexión e inténtalo de nuevo. No se cambió de documento.',
+      )
+      return
+    }
+
     onAbrirDocumentos()
   }, [guardarAntesDeSalir, onAbrirDocumentos])
 
   const cerrarSesion = useCallback(async () => {
-    await guardarAntesDeSalir()
+    setSaliendo(true)
+    setAvisoGuardado(null)
+
+    const guardadoOk = await guardarAntesDeSalir()
+    setSaliendo(false)
+
+    if (!guardadoOk) {
+      setAvisoGuardado(
+        'No se pudo guardar el documento. Revisa la conexión e inténtalo de nuevo. No se cerró la sesión.',
+      )
+      return
+    }
+
     await onCerrarSesion()
   }, [guardarAntesDeSalir, onCerrarSesion])
 
@@ -272,6 +330,7 @@ export function VistaEditor({
         botonChatRef={botonChatRef}
         temaResuelto={temaResuelto}
         onCambiarTema={onCambiarTema}
+        ocupado={saliendo}
         onAbrirDocumentos={() => {
           void volverADocumentos()
         }}
@@ -280,12 +339,22 @@ export function VistaEditor({
         }}
       />
 
+      {avisoGuardado && (
+        <div
+          role="alert"
+          className="border-b border-line bg-surface-muted px-3 py-2 text-center text-sm font-medium text-danger sm:px-4"
+        >
+          {avisoGuardado}
+        </div>
+      )}
+
       <div className="flex">
         <main className="min-w-0 flex-1">
           <EditorTexto
             documentoInicial={documento}
             titulo={titulo}
             onGuardarTitulo={guardarTitulo}
+            onCancelarTitulo={limpiarFalloTitulo}
             tipoDocumento={tipoDocumento}
             resaltados={resaltados}
             foco={foco}
@@ -293,6 +362,7 @@ export function VistaEditor({
             onParrafoResaltadoClic={senalarDesdeEditor}
             onQuitarResaltados={quitarResaltados}
             onEditorListo={registrarEditor}
+            onGuardarListo={registrarGuardado}
           />
         </main>
 
