@@ -4,11 +4,13 @@ Editor de texto tipo Word con un tutor de IA en un chat lateral. El tutor
 evalúa estructura y coherencia a demanda y **nunca** reescribe el texto del
 usuario.
 
-Estado actual: **Fase 4 (gramática en tiempo real con LanguageTool)**. Ya existe
-la hoja de escritura con TipTap, la barra de formato, el corrector ortográfico
-nativo, el contador de palabras, el autoguardado, el selector de tipo de
-documento, un chat lateral que revisa estructura y coherencia con IA real a
-demanda y una revisión gramatical automática con subrayados. El tutor no
+Estado actual: **Fase 8 (cuentas y documentos múltiples)**. La app arranca en
+una pantalla de cuenta; tras iniciar sesión se abre «Mis documentos», desde
+donde se crean, abren, renombran y borran documentos. Cada documento tiene
+título editable y se guarda en PostgreSQL a través de la API. El editor
+conserva la hoja de escritura con TipTap, la barra de formato, el corrector
+ortográfico nativo, el contador de palabras, el selector de tipo de documento,
+el chat lateral con IA real y la revisión gramatical automática. El tutor no
 modifica el texto: solo devuelve observaciones y preguntas guía.
 
 ## Requisitos
@@ -16,6 +18,8 @@ modifica el texto: solo devuelve observaciones y preguntas guía.
 - Node.js 22.12 o superior (probado con Node 24; lo exige Vite 8 y el flag
   `--env-file-if-exists`).
 - npm.
+- PostgreSQL local (probado con 18). La app no usa la nube: las cuentas y los
+  documentos viven en una base local.
 - Una clave de Gemini de [Google AI Studio](https://aistudio.google.com/apikey)
   para el chat con IA y para la prueba de humo.
 - Conexión a internet y una instancia accesible de LanguageTool para la
@@ -27,15 +31,31 @@ modifica el texto: solo devuelve observaciones y preguntas guía.
 ```bash
 npm install
 cp .env.example .env   # en Windows: Copy-Item .env.example .env
+createdb -U postgres editor_tutor
+npm run db:init
+npm run dev
 ```
 
-Edita `.env` y pega tu clave:
+Edita `.env` con tus valores. Las claves de Gemini, la URL de PostgreSQL y el
+secreto de sesión viven **solo** en el servidor:
 
 ```env
 GEMINI_API_KEY=tu_clave_aqui
 GEMINI_MODEL=gemini-2.5-flash
 LANGUAGETOOL_URL=https://api.languagetool.org
+DATABASE_URL=postgresql://postgres:tu_contrasena@localhost:5432/editor_tutor
+SESSION_SECRET=una_cadena_aleatoria_de_al_menos_32_caracteres
 ```
+
+`SESSION_SECRET` se usa para firmar los tokens de sesión; no lo compartas ni lo
+subas al repositorio. Puedes generarlo con:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+```
+
+`npm run db:init` aplica `db/schema.sql` y es idempotente: se puede ejecutar
+varias veces sin borrar datos.
 
 `GEMINI_MODEL` debe ser un modelo disponible en tu cuenta. El backend no fija
 un modelo por defecto: si la variable falta o el modelo no existe, el chat
@@ -56,10 +76,22 @@ servidor: el frontend llama a `/api`, nunca a Gemini ni a LanguageTool.
 | Comando             | Qué hace                                                   |
 | ------------------- | ---------------------------------------------------------- |
 | `npm run dev`       | Vite en http://localhost:5173 y API en http://localhost:3001. |
+| `npm run db:init`   | Aplica `db/schema.sql` en la base local.                   |
 | `npm run build`     | Comprueba tipos y genera la build de producción.           |
 | `npm run typecheck` | Solo comprobación de tipos.                                |
 | `npm run lint`      | Oxlint.                                                    |
+| `npm run test:cuentas` | Prueba de API de cuentas y documentos contra PostgreSQL. |
 | `npm run smoke`     | Prueba de humo: envía el ensayo de prueba a Gemini.        |
+
+Para ejecutar todas las pruebas:
+
+```bash
+$archivos = Get-ChildItem scripts/prueba-*.ts | ForEach-Object { $_.FullName }
+node --env-file-if-exists=.env --import tsx --test @archivos
+```
+
+Las pruebas de cuentas necesitan `DATABASE_URL` y `SESSION_SECRET` en `.env` y
+crean usuarios de prueba que luego borran.
 
 `npm run dev` usa `concurrently` para levantar el frontend y el backend. Vite
 proxya `/api` al puerto 3001, así que basta con abrir
@@ -81,11 +113,16 @@ Códigos de salida: `0` éxito, `1` error de validación, `2` error de API,
   estado activo.
 - El área de escritura usa `spellcheck="true"` y `lang="es"`; la corrección
   depende del diccionario español del navegador.
-- El documento se guarda automáticamente ~1 s después de dejar de escribir y
-  se recupera al recargar. El estado «Guardado» aparece en el pie de la hoja.
+- El documento se guarda automáticamente ~1 s después de dejar de escribir.
+  El pie muestra `Guardando…`, `Guardado` o `No se pudo guardar` (con un botón
+  `Reintentar`). Si el servidor está caído, el estado lo refleja y no se pierde
+  el texto que sigue en el editor.
+- Al cambiar de documento, el editor vacía el debounce y espera al guardado en
+  curso. Si el guardado falla, no se cambia de documento y aparece un aviso.
 - El pie muestra además el contador de palabras.
-- Se guarda el JSON de TipTap, no HTML ni texto plano. El único módulo que
-  toca localStorage es `src/lib/storage.ts`.
+- Se guarda el JSON de TipTap, no HTML ni texto plano. El único módulo del
+  frontend que sabe cómo se guardan los documentos es `src/lib/storage.ts`;
+  ahora habla con la API y PostgreSQL.
 
 ## Chat y tipo de documento (Fase 2)
 
@@ -95,8 +132,9 @@ Códigos de salida: `0` éxito, `1` error de validación, `2` error de API,
 - **Elección inicial**: con un documento nuevo aparece un diálogo para elegir
   el tipo. Se puede omitir y seguir con Texto Abierto. La elección se guarda
   junto con el documento y se recupera al recargar.
-- **Migración**: los documentos guardados en la Fase 1 se cargan sin perder
-  contenido; reciben el tipo Texto Abierto y se reescriben en el formato v2.
+- **Migración**: los documentos antiguos se cargan sin perder contenido; si
+  falta el tipo reciben Texto Abierto y, si faltan IDs de párrafo, se reparan al
+  guardar en el formato actual.
 - **Chat lateral** en la derecha, plegable con el botón de la cabecera. En
   pantallas menores de 1024 px aparece como panel deslizable.
 - El tutor da la bienvenida, avisa cuando cambia el tipo de documento y envía
@@ -186,6 +224,37 @@ node --import tsx --test scripts/prueba-gramatica.ts
 
 Si el pie muestra `Gramática no disponible`, revisa que `LANGUAGETOOL_URL` sea
 accesible. Tras un 429, el cliente espera 60 s antes de reintentar.
+
+## Cuentas y documentos (Fase 8)
+
+- **Cuenta**: la app abre en la pantalla de acceso. Se puede crear una cuenta o
+  iniciar sesión. La contraseña se guarda solo como hash `scrypt` y la sesión
+  viaja en una cookie `httpOnly`.
+- **Mis documentos**: tras el login siempre aparece la lista de documentos, con
+  tipo y fecha de actualización. Desde ahí se crea, abre, renombra y borra.
+  Borrar pide confirmación en la propia tarjeta.
+- **Título editable**: el título está dentro de la hoja. Se guarda con `Enter`
+  o al salir del campo; `Escape` descarta el cambio.
+- **Cambio de tipo inmediato**: al cambiar el tipo de documento se guarda al
+  momento, sin esperar al debounce del contenido.
+- **Guardado seguro al salir**: «Mis documentos» y «Cerrar sesión» esperan al
+  guardado en curso, vacían el debounce y, si la API falla, no cambian de
+  vista: muestran un aviso y el documento sigue abierto.
+- **Chat aislado por documento**: al cambiar de documento se aborta la revisión
+  del tutor en curso y se ignoran respuestas tardías. El chat, los resaltados y
+  la gramática empiezan limpios.
+- **Sesión caducada**: si una API protegida responde 401, la app vuelve a la
+  pantalla de cuenta con un mensaje en español.
+
+### Límites conocidos
+
+- `/api/revisar` y `/api/gramatica` siguen siendo públicas: no exigen sesión ni
+  tienen cuota por usuario. En local se acepta; para producción habría que
+  protegerlas.
+- Si el guardado falla, la navegación queda bloqueada para no perder cambios.
+  El usuario puede reintentar cuando vuelva la conexión o recargar la página.
+- No hay recuperación de contraseña, verificación por correo, roles, uso
+  compartido ni despliegue en la nube.
 
 ## Estructura
 

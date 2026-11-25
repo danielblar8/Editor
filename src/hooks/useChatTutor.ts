@@ -37,6 +37,18 @@ export function useChatTutor(
   const [enviando, setEnviando] = useState(false)
   const tipoAnteriorRef = useRef(tipoDocumento)
   const enviandoRef = useRef(false)
+  const montadoRef = useRef(true)
+  const controladorRef = useRef<AbortController | null>(null)
+
+  useEffect(() => {
+    montadoRef.current = true
+
+    return () => {
+      montadoRef.current = false
+      controladorRef.current?.abort()
+      controladorRef.current = null
+    }
+  }, [])
 
   useEffect(() => {
     if (tipoAnteriorRef.current === tipoDocumento) return
@@ -61,6 +73,8 @@ export function useChatTutor(
       const limpio = texto.trim()
       if (!limpio || enviandoRef.current) return
 
+      const controlador = new AbortController()
+      controladorRef.current = controlador
       enviandoRef.current = true
       setEnviando(true)
       setMensajes((anteriores) => [
@@ -92,7 +106,10 @@ export function useChatTutor(
           mensaje: limpio,
           tipoDocumento,
           texto: documento,
+          signal: controlador.signal,
         })
+
+        if (!montadoRef.current || controlador.signal.aborted) return
 
         setMensajes((anteriores) => [
           ...anteriores,
@@ -103,6 +120,8 @@ export function useChatTutor(
           ),
         ])
       } catch (error) {
+        if (!montadoRef.current || controlador.signal.aborted) return
+
         const mensaje =
           error instanceof ErrorTutor
             ? error.message
@@ -113,8 +132,11 @@ export function useChatTutor(
           crearMensajeTutor(mensaje),
         ])
       } finally {
-        enviandoRef.current = false
-        setEnviando(false)
+        if (controladorRef.current === controlador) {
+          controladorRef.current = null
+          enviandoRef.current = false
+          if (montadoRef.current) setEnviando(false)
+        }
       }
     },
     [obtenerDocumento, tipoDocumento],

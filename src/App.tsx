@@ -1,220 +1,110 @@
-import type { Editor } from '@tiptap/core'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChatLateral } from './components/ChatLateral'
-import { DialogoTipoDocumento } from './components/DialogoTipoDocumento'
-import { EditorTexto } from './components/EditorTexto'
-import { EncabezadoApp } from './components/EncabezadoApp'
-import { useChatTutor } from './hooks/useChatTutor'
+import { useCallback, useState } from 'react'
+import { PantallaCuenta } from './components/PantallaCuenta'
+import { PantallaDocumentos } from './components/PantallaDocumentos'
+import { VistaEditor } from './components/VistaEditor'
+import { useSesion } from './hooks/useSesion'
 import { useTema } from './hooks/useTema'
-import type { MensajeChat } from './lib/chat'
-import type { FocoObservacion } from './lib/observaciones'
-import {
-  construirResaltados,
-  obtenerIdUltimaRevision,
-} from './lib/observaciones'
-import { extraerParrafosConId, unirParrafos } from './lib/parrafos'
-import type { DocumentoGuardado } from './lib/storage'
-import { cargarDocumento } from './lib/storage'
-import type { TipoDocumentoId } from './lib/tiposDocumento'
-import { TIPO_DOCUMENTO_POR_DEFECTO } from './lib/tiposDocumento'
+import type {
+  PeticionLogin,
+  PeticionRegistro,
+} from './lib/cuentasTipos'
+
+type DocumentoAbierto = {
+  id: string
+  esNuevo: boolean
+}
 
 function App() {
-  const [documento, setDocumento] = useState<DocumentoGuardado | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [tipoDocumento, setTipoDocumento] = useState<TipoDocumentoId>(
-    TIPO_DOCUMENTO_POR_DEFECTO,
-  )
-  const [dialogoInicialAbierto, setDialogoInicialAbierto] = useState(false)
-  const [chatAbierto, setChatAbierto] = useState(
-    () => !window.matchMedia('(max-width: 1023px)').matches,
-  )
-  const [enfocarChatAlAbrir, setEnfocarChatAlAbrir] = useState(false)
-  const [foco, setFoco] = useState<FocoObservacion | null>(null)
-  const [revisionOculta, setRevisionOculta] = useState<string | null>(null)
-  const botonChatRef = useRef<HTMLButtonElement>(null)
-  const editorRef = useRef<Editor | null>(null)
-  const secuenciaFocoRef = useRef(0)
-
-  const obtenerDocumento = useCallback(() => {
-    const editor = editorRef.current
-    if (!editor) return { texto: '', idsParrafos: [] }
-
-    // Una sola lectura del documento: el texto y la foto de IDs salen de la
-    // misma lista, así que `parrafo_id` siempre apunta al bloque correcto.
-    const parrafos = extraerParrafosConId(editor)
-
-    return {
-      texto: unirParrafos(parrafos.map((parrafo) => parrafo.texto)),
-      idsParrafos: parrafos.map((parrafo) => parrafo.id),
-    }
-  }, [])
-
-  const registrarEditor = useCallback((editor: Editor | null) => {
-    editorRef.current = editor
-  }, [])
-
-  const chat = useChatTutor(tipoDocumento, obtenerDocumento)
   const tema = useTema()
-  const idRevisionActual = obtenerIdUltimaRevision(chat.mensajes)
-  const resaltadosDeRevision = useMemo(
-    () => construirResaltados(chat.mensajes),
-    [chat.mensajes],
-  )
-  const resaltados = useMemo(
-    () =>
-      revisionOculta && revisionOculta === idRevisionActual
-        ? []
-        : resaltadosDeRevision,
-    [idRevisionActual, resaltadosDeRevision, revisionOculta],
-  )
+  const {
+    usuario,
+    cargando,
+    errorSesion,
+    iniciarSesion,
+    registrarse,
+    cerrarSesion,
+    marcarSesionExpirada,
+    limpiarError,
+  } = useSesion()
+  const [documentoAbierto, setDocumentoAbierto] =
+    useState<DocumentoAbierto | null>(null)
 
-  const verEnTexto = useCallback((mensaje: MensajeChat) => {
-    if (!mensaje.parrafoId || !mensaje.idRevision) return
-
-    secuenciaFocoRef.current += 1
-    setFoco({
-      parrafoId: mensaje.parrafoId,
-      idRevision: mensaje.idRevision,
-      origen: 'chat',
-      secuencia: secuenciaFocoRef.current,
-    })
+  const abrirDocumento = useCallback((id: string, esNuevo: boolean) => {
+    setDocumentoAbierto({ id, esNuevo })
   }, [])
 
-  const senalarDesdeEditor = useCallback(
-    (parrafoId: string) => {
-      if (!idRevisionActual) return
+  const volverADocumentos = useCallback(() => {
+    setDocumentoAbierto(null)
+  }, [])
 
-      secuenciaFocoRef.current += 1
-      setFoco({
-        parrafoId,
-        idRevision: idRevisionActual,
-        origen: 'editor',
-        secuencia: secuenciaFocoRef.current,
-      })
+  const manejarInicioSesion = useCallback(
+    async (datos: PeticionLogin) => {
+      setDocumentoAbierto(null)
+      await iniciarSesion(datos)
     },
-    [idRevisionActual],
+    [iniciarSesion],
   )
 
-  const quitarResaltados = useCallback(() => {
-    if (idRevisionActual) setRevisionOculta(idRevisionActual)
-    setFoco(null)
-  }, [idRevisionActual])
+  const manejarRegistro = useCallback(
+    async (datos: PeticionRegistro) => {
+      setDocumentoAbierto(null)
+      await registrarse(datos)
+    },
+    [registrarse],
+  )
 
-  useEffect(() => {
-    let activo = true
+  const manejarSesionExpirada = useCallback(() => {
+    setDocumentoAbierto(null)
+    marcarSesionExpirada()
+  }, [marcarSesionExpirada])
 
-    cargarDocumento()
-      .then(({ documento: cargado, esNuevo }) => {
-        if (!activo) return
-
-        setDocumento(cargado)
-        setTipoDocumento(cargado.tipoDocumento)
-        setDialogoInicialAbierto(esNuevo)
-      })
-      .catch(() => {
-        if (!activo) return
-        setError(
-          'No se pudo cargar el documento. Comprueba que el navegador permita usar el almacenamiento local y recarga la página.',
-        )
-      })
-
-    return () => {
-      activo = false
-    }
-  }, [])
-
-  const cerrarChat = useCallback(() => {
-    setChatAbierto(false)
-    requestAnimationFrame(() => botonChatRef.current?.focus())
-  }, [])
-
-  const alternarChat = useCallback(() => {
-    if (!chatAbierto) setEnfocarChatAlAbrir(true)
-    setChatAbierto(!chatAbierto)
-  }, [chatAbierto])
-
-  const elegirTipoInicial = (tipo: TipoDocumentoId) => {
-    setTipoDocumento(tipo)
-    setDialogoInicialAbierto(false)
-  }
-
-  const omitirSeleccionInicial = () => {
-    setTipoDocumento(TIPO_DOCUMENTO_POR_DEFECTO)
-    setDialogoInicialAbierto(false)
-  }
-
-  if (error) {
+  if (cargando) {
     return (
       <main className="flex min-h-dvh items-center justify-center bg-canvas px-6">
-        <p
-          role="alert"
-          className="max-w-md rounded-lg border border-line bg-surface p-6 text-center text-sm text-danger shadow-lg"
-        >
-          {error}
+        <p aria-live="polite" className="text-sm text-muted">
+          Comprobando sesión…
         </p>
       </main>
     )
   }
 
-  if (!documento) {
+  if (!usuario) {
     return (
-      <main className="flex min-h-dvh items-center justify-center bg-canvas px-6">
-        <p aria-live="polite" className="text-sm text-muted">
-          Cargando documento…
-        </p>
-      </main>
+      <PantallaCuenta
+        onIniciarSesion={manejarInicioSesion}
+        onRegistrarse={manejarRegistro}
+        onLimpiarErrorSesion={limpiarError}
+        errorSesion={errorSesion}
+        temaResuelto={tema.temaResuelto}
+        onCambiarTema={tema.cambiarPreferencia}
+      />
+    )
+  }
+
+  if (documentoAbierto) {
+    return (
+      <VistaEditor
+        key={documentoAbierto.id}
+        idDocumento={documentoAbierto.id}
+        esNuevo={documentoAbierto.esNuevo}
+        temaResuelto={tema.temaResuelto}
+        onCambiarTema={tema.cambiarPreferencia}
+        onAbrirDocumentos={volverADocumentos}
+        onCerrarSesion={cerrarSesion}
+        onSesionExpirada={manejarSesionExpirada}
+      />
     )
   }
 
   return (
-    <div className="min-h-dvh bg-canvas">
-      <EncabezadoApp
-        tipoDocumento={tipoDocumento}
-        onCambiarTipo={setTipoDocumento}
-        chatAbierto={chatAbierto}
-        onAlternarChat={alternarChat}
-        botonChatRef={botonChatRef}
-        temaResuelto={tema.temaResuelto}
-        onCambiarTema={tema.cambiarPreferencia}
-      />
-
-      <div className="flex">
-        <main className="min-w-0 flex-1">
-          <EditorTexto
-            documentoInicial={documento}
-            tipoDocumento={tipoDocumento}
-            resaltados={resaltados}
-            foco={foco}
-            idRevisionActual={idRevisionActual}
-            onParrafoResaltadoClic={senalarDesdeEditor}
-            onQuitarResaltados={quitarResaltados}
-            onEditorListo={registrarEditor}
-          />
-        </main>
-
-        {chatAbierto && (
-          <ChatLateral
-            mensajes={chat.mensajes}
-            enviando={chat.enviando}
-            enfocarAlAbrir={enfocarChatAlAbrir}
-            foco={foco}
-            idRevisionActual={idRevisionActual}
-            resaltados={resaltados}
-            onEnviar={(texto) => {
-              void chat.enviar(texto)
-            }}
-            onVerEnTexto={verEnTexto}
-            onCerrar={cerrarChat}
-          />
-        )}
-      </div>
-
-      <DialogoTipoDocumento
-        abierto={dialogoInicialAbierto}
-        onElegir={elegirTipoInicial}
-        onOmitir={omitirSeleccionInicial}
-      />
-    </div>
+    <PantallaDocumentos
+      usuario={usuario}
+      temaResuelto={tema.temaResuelto}
+      onCambiarTema={tema.cambiarPreferencia}
+      onCerrarSesion={cerrarSesion}
+      onAbrirDocumento={abrirDocumento}
+      onSesionExpirada={manejarSesionExpirada}
+    />
   )
 }
 

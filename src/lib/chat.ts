@@ -45,6 +45,8 @@ export type PeticionTutor = {
   mensaje: string
   tipoDocumento: TipoDocumentoId
   texto: string
+  /** Permite cancelar la revisión al salir del documento. */
+  signal?: AbortSignal
 }
 
 export type RespuestaTutor = {
@@ -258,8 +260,25 @@ export async function responderTutor({
   mensaje,
   tipoDocumento,
   texto,
+  signal,
 }: PeticionTutor): Promise<RespuestaTutor> {
   const seccion = detectarSeccion(mensaje)
+  const controlador = new AbortController()
+  const temporizador = setTimeout(() => {
+    controlador.abort(
+      new DOMException('La revisión tardó demasiado.', 'TimeoutError'),
+    )
+  }, TIEMPO_MAXIMO_REVISION_MS)
+
+  const abortarPorFuera = () => {
+    controlador.abort(signal?.reason)
+  }
+
+  if (signal) {
+    if (signal.aborted) abortarPorFuera()
+    else signal.addEventListener('abort', abortarPorFuera, { once: true })
+  }
+
   let respuesta: Response
 
   try {
@@ -267,9 +286,13 @@ export async function responderTutor({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ texto, tipoDocumento, seccion }),
-      signal: AbortSignal.timeout(TIEMPO_MAXIMO_REVISION_MS),
+      signal: controlador.signal,
     })
   } catch (error) {
+    if (signal?.aborted) {
+      throw new ErrorTutor('Revisión cancelada.')
+    }
+
     if (
       error instanceof Error &&
       (error.name === 'TimeoutError' || error.name === 'AbortError')
@@ -280,6 +303,9 @@ export async function responderTutor({
     throw new ErrorTutor(
       'No se pudo conectar con el tutor. Comprueba que el servidor esté en marcha e inténtalo de nuevo.',
     )
+  } finally {
+    clearTimeout(temporizador)
+    signal?.removeEventListener('abort', abortarPorFuera)
   }
 
   let datos: unknown = null

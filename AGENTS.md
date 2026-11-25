@@ -46,6 +46,15 @@ ideas nuevas en la conclusión, desequilibrio entre secciones.
    backend.
 11. Toda configuración (claves, URLs) va en variables de entorno, nunca
    fija en el código.
+12. Cuentas y documentos: PostgreSQL local con la librería pg. Las
+    contraseñas se guardan SOLO como hash (scrypt de Node o argon2),
+    nunca en texto plano ni en logs. La sesión usa cookie httpOnly.
+    Toda consulta de documentos filtra por el usuario de la sesión.
+13. DATABASE_URL y SESSION_SECRET viven solo en .env; .env.example los
+    lista sin valores reales. El esquema SQL vive en db/schema.sql y
+    debe poder ejecutarse con un solo comando.
+14. src/lib/storage.ts sigue siendo el único módulo del frontend que
+    sabe cómo se guardan los documentos (ahora vía API).
 
 ## Plan por fases
 - Fase 0: Preparación (repo, proyecto base, variables de entorno,
@@ -63,7 +72,12 @@ ideas nuevas en la conclusión, desequilibrio entre secciones.
 - Fase 6: Integración con el editor (ID por párrafo, resaltado de
   observaciones, interpretación de comandos, caché del mapa)
 - Fase 7: Pruebas y pulido (manejo de errores, estados de carga)
-- Fase 8: Despliegue en Vercel y documentación
+- Fase 8: Cuentas y documentos múltiples (PostgreSQL local con pg:
+  registro, inicio y cierre de sesión con contraseñas hasheadas y
+  cookie httpOnly; API de documentos por usuario; pantalla "Mis
+  documentos" con crear, abrir, renombrar y borrar; storage.ts
+  conectado a la API; reinicio limpio de chat, resaltados y gramática
+  al cambiar de documento). Todo en local, sin nube.
 
 ## Eficiencia
 - Respuestas breves; no repitas lo que ya dije.
@@ -72,4 +86,4 @@ ideas nuevas en la conclusión, desequilibrio entre secciones.
 - No pegues archivos completos: indica ruta y qué cambió.
 - Ignora package-lock.json, dist/ y node_modules/.
 
-## Fase actual: 6
+## Fase actual: 8

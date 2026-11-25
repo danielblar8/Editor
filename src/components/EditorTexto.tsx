@@ -21,9 +21,13 @@ import { guardarDocumento } from '../lib/storage'
 import { contarPalabras, formatearPalabras } from '../lib/texto'
 import type { TipoDocumentoId } from '../lib/tiposDocumento'
 import { BarraHerramientas } from './BarraHerramientas'
+import { CampoTituloDocumento } from './CampoTituloDocumento'
 
 type EditorTextoProps = {
   documentoInicial: DocumentoGuardado
+  titulo: string
+  onGuardarTitulo: (titulo: string) => Promise<void>
+  onCancelarTitulo?: () => void
   tipoDocumento: TipoDocumentoId
   resaltados: readonly ResaltadoParrafo[]
   foco: FocoObservacion | null
@@ -31,6 +35,11 @@ type EditorTextoProps = {
   onParrafoResaltadoClic: (parrafoId: string) => void
   onQuitarResaltados: () => void
   onEditorListo?: (editor: Editor | null) => void
+  /**
+   * Expone una función para forzar el guardado antes de salir del documento.
+   * Devuelve `true` si no queda nada pendiente o si el guardado terminó bien.
+   */
+  onGuardarListo?: (guardar: (() => Promise<boolean>) | null) => void
 }
 
 type EstadoGuardado = 'guardado' | 'pendiente' | 'error'
@@ -67,6 +76,9 @@ const COLOR_GRAMATICA: Record<EstadoGramatica, string> = {
 
 export function EditorTexto({
   documentoInicial,
+  titulo,
+  onGuardarTitulo,
+  onCancelarTitulo,
   tipoDocumento,
   resaltados,
   foco,
@@ -74,6 +86,7 @@ export function EditorTexto({
   onParrafoResaltadoClic,
   onQuitarResaltados,
   onEditorListo,
+  onGuardarListo,
 }: EditorTextoProps) {
   const [estadoGuardado, setEstadoGuardado] =
     useState<EstadoGuardado>('guardado')
@@ -81,6 +94,7 @@ export function EditorTexto({
   const editorRef = useRef<Editor | null>(null)
   const temporizadorRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const guardadoPendienteRef = useRef(false)
+  const guardadoEnCursoRef = useRef<Promise<boolean> | null>(null)
   const versionRef = useRef(0)
   const tipoPersistidoRef = useRef(documentoInicial.tipoDocumento)
   const resaltadosRef = useRef(resaltados)
@@ -95,32 +109,53 @@ export function EditorTexto({
   }, [onParrafoResaltadoClic])
 
   const persistir = useCallback(
-    async (editorActual: Editor, forzar = false) => {
-      if (!forzar && !guardadoPendienteRef.current) return
+    (editorActual: Editor, forzar = false): Promise<boolean> => {
+      if (!forzar && !guardadoPendienteRef.current) {
+        return Promise.resolve(true)
+      }
 
       if (temporizadorRef.current !== null) {
         clearTimeout(temporizadorRef.current)
         temporizadorRef.current = null
       }
 
-      setEstadoGuardado('pendiente')
-      const versionAlGuardar = versionRef.current
+      // Serializa los guardados: si ya hay uno en curso, el siguiente espera
+      // su resultado y vuelve a comprobar si queda algo pendiente. Así una
+      // salida del documento no puede adelantar a una escritura anterior.
+      const anterior = guardadoEnCursoRef.current ?? Promise.resolve(true)
+      const siguiente = anterior.then(async () => {
+        if (!forzar && !guardadoPendienteRef.current) return true
 
-      try {
-        await guardarDocumento({
-          ...documentoRef.current,
-          contenido: editorActual.getJSON(),
-          actualizadoEn: new Date().toISOString(),
-        })
+        setEstadoGuardado('pendiente')
+        const versionAlGuardar = versionRef.current
 
-        if (versionRef.current === versionAlGuardar) {
-          guardadoPendienteRef.current = false
-          setEstadoGuardado('guardado')
+        try {
+          await guardarDocumento({
+            ...documentoRef.current,
+            contenido: editorActual.getJSON(),
+            actualizadoEn: new Date().toISOString(),
+          })
+
+          if (versionRef.current === versionAlGuardar) {
+            guardadoPendienteRef.current = false
+            setEstadoGuardado('guardado')
+          }
+          return true
+        } catch {
+          guardadoPendienteRef.current = true
+          setEstadoGuardado('error')
+          return false
         }
-      } catch {
-        guardadoPendienteRef.current = true
-        setEstadoGuardado('error')
-      }
+      })
+
+      guardadoEnCursoRef.current = siguiente
+      void siguiente.finally(() => {
+        if (guardadoEnCursoRef.current === siguiente) {
+          guardadoEnCursoRef.current = null
+        }
+      })
+
+      return siguiente
     },
     [],
   )
@@ -239,6 +274,25 @@ export function EditorTexto({
     }
   }, [editor, onEditorListo])
 
+  /**
+   * Vacía el debounce y espera al guardado en curso. Si no hay cambios
+   * pendientes, termina sin escribir en la API.
+   */
+  const guardarAhora = useCallback(async (): Promise<boolean> => {
+    const editorActual = editorRef.current
+    if (!editorActual || editorActual.isDestroyed) return true
+
+    return persistir(editorActual)
+  }, [persistir])
+
+  useEffect(() => {
+    onGuardarListo?.(guardarAhora)
+
+    return () => {
+      onGuardarListo?.(null)
+    }
+  }, [guardarAhora, onGuardarListo])
+
   // El tipo de documento es una acción discreta del usuario: se guarda de
   // inmediato, sin esperar al debounce del contenido, para que sobreviva a una
   // recarga aunque no se vuelva a escribir.
@@ -295,6 +349,12 @@ export function EditorTexto({
 
       <div className="px-3 py-6 sm:px-6 sm:py-10">
         <article className="mx-auto flex min-h-[calc(100dvh-10rem)] w-full max-w-[816px] flex-col rounded-sm border border-sheet-border bg-sheet px-5 py-10 text-ink shadow-xl shadow-slate-900/10 ring-1 ring-line/20 dark:shadow-black/50 sm:px-14 sm:py-14 lg:px-20">
+          <CampoTituloDocumento
+            titulo={titulo}
+            onGuardar={onGuardarTitulo}
+            onCancelar={onCancelarTitulo}
+          />
+
           <EditorContent editor={editor} className="flex-1" />
 
           <footer className="mt-10 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 text-xs">
@@ -309,6 +369,18 @@ export function EditorTexto({
               >
                 {TEXTO_ESTADO[estadoGuardado]}
               </p>
+              {estadoGuardado === 'error' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const editorActual = editorRef.current
+                    if (editorActual) void persistir(editorActual, true)
+                  }}
+                  className="rounded-md border border-line px-2 py-0.5 text-xs font-medium text-muted transition-colors hover:border-subtle hover:bg-surface-muted hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                >
+                  Reintentar
+                </button>
+              )}
               <p
                 aria-live="polite"
                 className={`flex items-center gap-1.5 font-medium ${COLOR_GRAMATICA[estadoGramatica]}`}

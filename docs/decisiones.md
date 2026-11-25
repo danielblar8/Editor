@@ -833,3 +833,159 @@ Quedan fuera del alcance de la Fase 5 y se retoman más adelante:
 - La caché del mapa, los IDs persistentes de párrafo y el resaltado en el editor
   siguen pendientes de la Fase 6.
 - Sin commit de cierre: los cambios quedan pendientes de revisión manual.
+
+## Fase 6 — Integración con el editor (2026-11-24)
+
+### IDs persistentes y formato v3
+
+- El documento pasa a la versión 3: cada bloque recibe un `parrafoId` UUID
+  guardado en `attrs`. La migración v2→v3 se aplica al cargar y repara IDs
+  ausentes o duplicados sin cambiar el texto.
+- La extensión `ParrafoId` asigna IDs a bloques nuevos (por ejemplo, al pulsar
+  Enter) y repara los que falten. La transacción se marca sin historial y con
+  `preventUpdate` para no disparar autoguardado ni gramática.
+- `extraerParrafosConId` toma el texto y la foto de IDs en una sola lectura. El
+  `parrafo_id` numérico del servidor se traduce al `parrafoId` del bloque, así
+  que un cambio de posición o de contenido no descoloca el resaltado.
+
+### Resaltado y navegación
+
+- `ObservacionesDecoraciones` usa `Decoration.node` sobre el bloque, no marks ni
+  texto. El color depende de la severidad y el bloque conserva intacto su JSON.
+- Solo la revisión más reciente pinta el documento; las tarjetas anteriores
+  quedan como historial. Una revisión sin problemas limpia los resaltados.
+- Al pulsar una tarjeta, el editor enfoca y desplaza el bloque; al pulsar un
+  bloque resaltado, se marca la tarjeta correspondiente. «Quitar resaltados»
+  oculta la revisión actual sin borrar el chat.
+- Si hay varias observaciones sobre el mismo bloque, se muestra la de mayor
+  severidad.
+
+### Límites conocidos
+
+- No hay caché del mapa del documento: las revisiones largas vuelven a pedirlo
+  al modelo. La caché implementada en esta fase es solo la de gramática.
+- El chat y los resaltados viven en memoria; se pierden al recargar.
+- La navegación entre errores no tiene atajos de teclado propios.
+
+## Fase 7 — Pruebas y pulido (2026-11-24)
+
+### Reintentos y errores
+
+- Se reintenta una sola vez un `503 servicio_no_disponible`, tras 1,5 s y
+  dentro del plazo global de 55 s. `GEMINI_MODEL_RESPALDO` es opcional y solo se
+  usa en ese segundo intento.
+- No se reintentan cuota, configuración, timeout, conexión ni otros 5xx.
+- Los errores de validación del SDK (`TypeValidationError`,
+  `NoObjectGeneratedError`) se traducen dentro de la llamada para que el
+  reintento por `respuesta_invalida` pueda actuar.
+- Los mensajes de error del tutor y de gramática se traducen a textos en
+  español; la interfaz mantiene estados de carga y no bloquea la escritura.
+
+### Pruebas
+
+- Las pruebas inyectan la función de llamada y usan `esperaMs: 0`, así que no
+  dependen de temporizadores reales ni de la red.
+- Se añadieron fixtures de documento bueno, largo, con sinónimos y solo con
+  introducción para comprobar falsos positivos y límites.
+- `npm run typecheck`, `npm run lint` y `npm run build` forman la verificación
+  mínima de cada cambio.
+
+### Límites conocidos
+
+- La suite automatizada no cubre la interfaz ni llamadas reales a Gemini; los
+  smokes manuales consumen cuota.
+- Sin commit de cierre: los cambios quedan pendientes de revisión manual.
+
+## Fase 8 — Cuentas y documentos múltiples (en curso)
+
+### Pasos 1–3 implementados
+
+- PostgreSQL local con `pg`. `db/schema.sql` define `usuarios`, `sesiones` y
+  `documentos`; se aplica con `npm run db:init` y es idempotente.
+- Contraseñas con `scrypt` (sal aleatoria y `timingSafeEqual`). La sesión usa
+  una cookie `httpOnly`, `SameSite=Lax` y 7 días; en la base solo se guarda un
+  HMAC del token firmado con `SESSION_SECRET`.
+- Registro, login, logout y `GET /api/auth/yo`. El login devuelve el mismo error
+  para correo inexistente y contraseña incorrecta.
+- API de documentos con listar, crear, leer, renombrar, guardar contenido y
+  borrar. Todas las consultas filtran por el usuario de la sesión.
+- `src/lib/storage.ts` habla con la API; localStorage solo conserva el tema y
+  el puntero al último documento.
+
+### Paso 4: interfaz de cuentas y documentos
+
+- La app se divide en tres vistas derivadas del estado: sin usuario se muestra
+  `PantallaCuenta`; con usuario y sin documento abierto, `PantallaDocumentos`;
+  con documento abierto, `VistaEditor`. No se añadió router: el usuario de la
+  sesión y el documento seleccionado bastan para decidir la vista.
+- `useSesion` consulta `GET /api/auth/yo` al montar y expone login, registro y
+  logout. Ante un 401 de una API protegida limpia el usuario y muestra «Tu
+  sesión ha caducado. Vuelve a iniciar sesión.».
+- `VistaEditor` se monta con `key={idDocumento}`: al cambiar de documento se
+  reinician chat, resaltados, gramática y la instancia de TipTap sin compartir
+  estado. Antes de volver a la lista o cerrar sesión se guardan el contenido y
+  el tipo de forma explícita.
+- El título es un campo editable dentro de la hoja (`CampoTituloDocumento`), no
+  en el encabezado, para no alterar la altura `h-14` ni el sticky de la barra de
+  herramientas. Guarda al salir del campo o con Enter, Escape descarta y un
+  título vacío se rechaza.
+- `PantallaDocumentos` lista los documentos del usuario con tipo y fecha, y
+  permite crear, abrir, renombrar en línea y borrar con confirmación en línea.
+  Carga, lista vacía y errores se muestran en español.
+- `storage.ts` conserva `titulo` al migrar documentos antiguos y
+  `renombrarDocumento` devuelve el resumen actualizado, así la lista se
+  actualiza sin recargar.
+- El encabezado del editor añade «Mis documentos» y «Cerrar sesión», con texto
+  en pantallas medianas y solo icono en móvil.
+- Verificación: `npm run typecheck`, `npm run lint`, `npm run build`,
+  `npm run test:cuentas` y la suite completa (70 pruebas) pasan.
+
+### Paso 5: pulido del cambio de documento
+
+- `EditorTexto` serializa los guardados con una cadena de promesas. Cada llamada
+  a `persistir` cancela el temporizador del debounce, espera al guardado en curso
+  y vuelve a comprobar si queda contenido pendiente. Devuelve `true` solo si no
+  había nada que escribir o si la escritura terminó bien.
+- La salida usa `guardarAhora`, expuesto a `VistaEditor` mediante
+  `onGuardarListo`. Antes de navegar se espera también el renombrado en curso;
+  si el contenido o el título fallaron (incluso en un intento anterior), la
+  vista no cambia y muestra un aviso. Escape en el título descarta el cambio y
+  limpia ese bloqueo.
+- `guardarDocumento` sigue siendo el único camino de escritura del frontend y
+  siempre incluye el ID en la URL (`/api/documentos/:id/contenido`). El servidor
+  filtra por la sesión, así que un guardado tardío de otro documento no puede
+  escribir en el documento abierto.
+- El cambio de tipo **ya se guardaba de inmediato** en `EditorTexto` antes de
+  este paso: el efecto compara `tipoPersistidoRef` y llama a `persistir(editor,
+  true)` sin esperar al debounce. Se corrigió el reporte del paso 4, que decía
+  lo contrario.
+- La revisión del tutor acepta un `AbortSignal` (`chat.ts`). `useChatTutor`
+  crea un controlador por envío, aborta al desmontarse e ignora el resultado si
+  la señal se canceló o el hook ya no está montado. No se tocó el backend ni
+  `/api/revisar`.
+- `useGramatica` ya llamaba a `detener()`, que aborta la petición en curso, y
+  `VistaEditor` se monta con `key={idDocumento}`: chat, resaltados y gramática
+  se reinician al cambiar de documento sin cambios adicionales.
+- El pie conserva `Guardando…`, `Guardado` y `No se pudo guardar`. Con la API
+  caída, `solicitarJson` lanza `ErrorApi('sin_conexion')` y el estado pasa a
+  error; el botón `Reintentar` vuelve a intentar y recupera el estado
+  `Guardado` cuando la conexión vuelve.
+- Verificación: `npm run typecheck`, `npm run lint`, `npm run build`,
+  `npm run test:cuentas` y la suite completa pasan.
+
+### Límites conocidos de estos pasos
+
+- `/api/revisar` y `/api/gramatica` siguen siendo públicas, por decisión
+  explícita: no exigen sesión ni tienen cuota por usuario. En local se acepta;
+  para producción habría que protegerlas y limitar su uso.
+- El título se guarda en una petición aparte del contenido: si falla la red al
+  renombrar, la hoja muestra el error y conserva el valor anterior.
+- No hay botón explícito de guardar: el contenido se guarda solo con el
+  debounce de 1 s y el tipo al cambiarlo.
+- Si el guardado falla, la navegación queda bloqueada para no perder cambios.
+  El usuario puede reintentar o esperar a que vuelva la conexión.
+- La importación del documento antiguo de localStorage queda pendiente y solo
+  se hará si se solicita.
+- Sin recuperación de contraseña, verificación por correo, roles, uso
+  compartido ni despliegue.
+- Sin commit de cierre: los cambios quedan pendientes de revisión manual.
