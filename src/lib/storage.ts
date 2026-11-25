@@ -4,6 +4,10 @@ import type {
   DocumentoApi,
   DocumentoResumen,
 } from './documentosTipos'
+import {
+  LIMITE_TITULO,
+  TITULO_POR_DEFECTO,
+} from './documentosTipos'
 import { asegurarIdsContenido } from './parrafosIds'
 import type { PreferenciaTema } from './tema'
 import {
@@ -38,6 +42,7 @@ export type { DocumentoResumen } from './documentosTipos'
  */
 export type DocumentoGuardado = {
   id: string
+  titulo: string
   version: typeof VERSION_ACTUAL
   tipoDocumento: TipoDocumentoId
   contenido: JSONContent
@@ -57,6 +62,7 @@ export type ResultadoCargaDocumento = {
 
 type DocumentoCrudo = {
   id: string
+  titulo?: unknown
   version: number
   tipoDocumento?: unknown
   contenido: JSONContent
@@ -98,6 +104,7 @@ function esDocumentoBase(valor: unknown): valor is DocumentoCrudo {
  * - Versión 2: se respeta el tipo si es conocido; si no, se usa el defecto.
  * - Todas las versiones reciben IDs de párrafo estables al pasar a la 3. Un ID
  *   repetido se reemplaza por uno nuevo para mantener la unicidad.
+ * - El título es opcional en documentos antiguos; sin él se usa «Sin título».
  * - Cualquier otra versión se descarta.
  *
  * Exportada para las pruebas unitarias; el resto de la app usa
@@ -118,6 +125,10 @@ export function migrarDocumento(valor: unknown): DocumentoLeido | null {
   const tipoDocumento = esTipoDocumentoId(valor.tipoDocumento)
     ? valor.tipoDocumento
     : TIPO_DOCUMENTO_POR_DEFECTO
+  const titulo =
+    typeof valor.titulo === 'string' && valor.titulo.trim().length > 0
+      ? valor.titulo.trim().slice(0, LIMITE_TITULO)
+      : TITULO_POR_DEFECTO
   const { contenido, cambiado: idsCambiados } = asegurarIdsContenido(
     valor.contenido,
   )
@@ -125,6 +136,7 @@ export function migrarDocumento(valor: unknown): DocumentoLeido | null {
   return {
     documento: {
       id: valor.id,
+      titulo,
       version: VERSION_ACTUAL,
       tipoDocumento,
       contenido,
@@ -166,6 +178,7 @@ export function limpiarDocumentoActual(): void {
 function aDocumentoGuardado(api: DocumentoApi): DocumentoLeido {
   const leido = migrarDocumento({
     id: api.id,
+    titulo: api.titulo,
     version: api.version,
     tipoDocumento: api.tipoDocumento,
     contenido: api.contenido as JSONContent,
@@ -297,11 +310,23 @@ export async function crearDocumento(opciones: {
 export async function renombrarDocumento(
   id: string,
   titulo: string,
-): Promise<void> {
-  await solicitarJson(`/api/documentos/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    body: JSON.stringify({ titulo }),
-  })
+): Promise<DocumentoResumen> {
+  const respuesta = await solicitarJson<{ documento: DocumentoApi }>(
+    `/api/documentos/${encodeURIComponent(id)}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ titulo }),
+    },
+  )
+  const { documento } = aDocumentoGuardado(respuesta.documento)
+
+  return {
+    id: documento.id,
+    titulo: documento.titulo,
+    tipoDocumento: documento.tipoDocumento,
+    creadoEn: respuesta.documento.creadoEn,
+    actualizadoEn: documento.actualizadoEn,
+  }
 }
 
 export async function borrarDocumento(id: string): Promise<void> {

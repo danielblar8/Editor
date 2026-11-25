@@ -912,13 +912,43 @@ Quedan fuera del alcance de la Fase 5 y se retoman más adelante:
 - `src/lib/storage.ts` habla con la API; localStorage solo conserva el tema y
   el puntero al último documento.
 
+### Paso 4: interfaz de cuentas y documentos
+
+- La app se divide en tres vistas derivadas del estado: sin usuario se muestra
+  `PantallaCuenta`; con usuario y sin documento abierto, `PantallaDocumentos`;
+  con documento abierto, `VistaEditor`. No se añadió router: el usuario de la
+  sesión y el documento seleccionado bastan para decidir la vista.
+- `useSesion` consulta `GET /api/auth/yo` al montar y expone login, registro y
+  logout. Ante un 401 de una API protegida limpia el usuario y muestra «Tu
+  sesión ha caducado. Vuelve a iniciar sesión.».
+- `VistaEditor` se monta con `key={idDocumento}`: al cambiar de documento se
+  reinician chat, resaltados, gramática y la instancia de TipTap sin compartir
+  estado. Antes de volver a la lista o cerrar sesión se guardan el contenido y
+  el tipo de forma explícita.
+- El título es un campo editable dentro de la hoja (`CampoTituloDocumento`), no
+  en el encabezado, para no alterar la altura `h-14` ni el sticky de la barra de
+  herramientas. Guarda al salir del campo o con Enter, Escape descarta y un
+  título vacío se rechaza.
+- `PantallaDocumentos` lista los documentos del usuario con tipo y fecha, y
+  permite crear, abrir, renombrar en línea y borrar con confirmación en línea.
+  Carga, lista vacía y errores se muestran en español.
+- `storage.ts` conserva `titulo` al migrar documentos antiguos y
+  `renombrarDocumento` devuelve el resumen actualizado, así la lista se
+  actualiza sin recargar.
+- El encabezado del editor añade «Mis documentos» y «Cerrar sesión», con texto
+  en pantallas medianas y solo icono en móvil.
+- Verificación: `npm run typecheck`, `npm run lint`, `npm run build`,
+  `npm run test:cuentas` y la suite completa (70 pruebas) pasan.
+
 ### Límites conocidos de estos pasos
 
 - `/api/revisar` y `/api/gramatica` siguen siendo públicas, por decisión
   explícita: no exigen sesión ni tienen cuota por usuario. En local se acepta;
   para producción habría que protegerlas y limitar su uso.
-- La interfaz todavía no tiene pantalla de cuenta ni de documentos; hasta el
-  paso 4 la app no puede cargar el editor a través de la API.
+- El título se guarda en una petición aparte del contenido: si falla la red al
+  renombrar, la hoja muestra el error y conserva el valor anterior.
+- El cambio de tipo de documento se persiste en el siguiente autoguardado; no
+  hay botón explícito de guardar.
 - La importación del documento antiguo de localStorage queda pendiente y solo
   se hará si se solicita.
 - Sin recuperación de contraseña, verificación por correo, roles, uso

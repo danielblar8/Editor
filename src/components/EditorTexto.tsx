@@ -21,9 +21,12 @@ import { guardarDocumento } from '../lib/storage'
 import { contarPalabras, formatearPalabras } from '../lib/texto'
 import type { TipoDocumentoId } from '../lib/tiposDocumento'
 import { BarraHerramientas } from './BarraHerramientas'
+import { CampoTituloDocumento } from './CampoTituloDocumento'
 
 type EditorTextoProps = {
   documentoInicial: DocumentoGuardado
+  titulo: string
+  onGuardarTitulo: (titulo: string) => Promise<void>
   tipoDocumento: TipoDocumentoId
   resaltados: readonly ResaltadoParrafo[]
   foco: FocoObservacion | null
@@ -67,6 +70,8 @@ const COLOR_GRAMATICA: Record<EstadoGramatica, string> = {
 
 export function EditorTexto({
   documentoInicial,
+  titulo,
+  onGuardarTitulo,
   tipoDocumento,
   resaltados,
   foco,
@@ -295,6 +300,8 @@ export function EditorTexto({
 
       <div className="px-3 py-6 sm:px-6 sm:py-10">
         <article className="mx-auto flex min-h-[calc(100dvh-10rem)] w-full max-w-[816px] flex-col rounded-sm border border-sheet-border bg-sheet px-5 py-10 text-ink shadow-xl shadow-slate-900/10 ring-1 ring-line/20 dark:shadow-black/50 sm:px-14 sm:py-14 lg:px-20">
+          <CampoTituloDocumento titulo={titulo} onGuardar={onGuardarTitulo} />
+
           <EditorContent editor={editor} className="flex-1" />
 
           <footer className="mt-10 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-4 text-xs">

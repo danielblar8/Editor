@@ -17,6 +17,16 @@ export class ErrorApi extends Error {
   }
 }
 
+/** La sesión falta o caducó: la interfaz debe volver a la pantalla de cuenta. */
+export function esErrorNoAutenticado(error: unknown): boolean {
+  return error instanceof ErrorApi && error.estado === 401
+}
+
+/** Usa el mensaje en español del servidor y deja un texto de respaldo. */
+export function mensajeDeError(error: unknown, porDefecto: string): string {
+  return error instanceof ErrorApi ? error.message : porDefecto
+}
+
 function esObjeto(valor: unknown): valor is Record<string, unknown> {
   return typeof valor === 'object' && valor !== null
 }
