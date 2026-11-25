@@ -1,6 +1,10 @@
 import type { Editor } from '@tiptap/core'
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
+import { Subscript } from '@tiptap/extension-subscript'
+import { Superscript } from '@tiptap/extension-superscript'
+import { TextAlign } from '@tiptap/extension-text-align'
+import { FontFamily, FontSize, TextStyle } from '@tiptap/extension-text-style'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { GramaticaDecoraciones } from '../extensions/GramaticaDecoraciones'
 import type {
@@ -91,6 +95,7 @@ export function EditorTexto({
   const [estadoGuardado, setEstadoGuardado] =
     useState<EstadoGuardado>('guardado')
   const documentoRef = useRef(documentoInicial)
+  const cabeceraRef = useRef<HTMLElement | null>(null)
   const editorRef = useRef<Editor | null>(null)
   const temporizadorRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const guardadoPendienteRef = useRef(false)
@@ -107,6 +112,30 @@ export function EditorTexto({
   useEffect(() => {
     alClicParrafoRef.current = onParrafoResaltadoClic
   }, [onParrafoResaltadoClic])
+
+  // La barra pasa a ocupar varias filas en pantallas estrechas. Publicar la
+  // altura real de la cabecera evita que el resaltado de una observación quede
+  // debajo de ella al llegar desde una tarjeta del chat.
+  useEffect(() => {
+    const cabecera = cabeceraRef.current
+    if (!cabecera || typeof ResizeObserver === 'undefined') return
+
+    const actualizar = () => {
+      document.documentElement.style.setProperty(
+        '--altura-cabecera-editor',
+        `${cabecera.offsetHeight}px`,
+      )
+    }
+
+    actualizar()
+    const observador = new ResizeObserver(actualizar)
+    observador.observe(cabecera)
+
+    return () => {
+      observador.disconnect()
+      document.documentElement.style.removeProperty('--altura-cabecera-editor')
+    }
+  }, [])
 
   const persistir = useCallback(
     (editorActual: Editor, forzar = false): Promise<boolean> => {
@@ -165,6 +194,12 @@ export function EditorTexto({
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
       }),
+      TextStyle,
+      FontFamily,
+      FontSize,
+      Subscript,
+      Superscript,
+      TextAlign.configure({ types: ['paragraph', 'heading'] }),
       ParrafoId,
       GramaticaDecoraciones,
       ObservacionesDecoraciones,
@@ -331,7 +366,10 @@ export function EditorTexto({
 
   return (
     <>
-      <header className="sticky top-14 z-20 border-b border-line bg-surface/95 shadow-sm backdrop-blur">
+      <header
+        ref={cabeceraRef}
+        className="sticky top-14 z-20 border-b border-line bg-surface/95 shadow-sm backdrop-blur"
+      >
         <BarraHerramientas editor={editor} />
 
         {resaltados.length > 0 && (
